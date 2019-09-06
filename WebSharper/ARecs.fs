@@ -275,6 +275,7 @@ module ARecs =
                                                 create = true;
                                             |}                        
                                     ]   ;
+                                formCreated = FuncWithArgs customForm;
                                 selectionChanged = FuncWithArgs (fun (ev, dt) -> 
                                     Console.Log("SelectionChanged")
                                     colourTable lastSel

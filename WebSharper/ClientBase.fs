@@ -258,3 +258,36 @@ module ClientBase =
                     ]
             )
         ]
+		
+    let customForm (ev, dt) =
+        let form :JQuery = JQuery.Of(dt?form :> obj)
+        form.Css("width","600px").Ignore  
+        let code_found = form.Find("select[name=AlertCode]") 
+        match  dt?formType with
+        | "create" ->
+            code_found.Empty().Ignore
+            let code_dropdown = JQuery.Of("#AlertCodeSelect option")
+            Console.Log("code_dropdown", code_dropdown)
+            code_dropdown.Each(fun i el -> 
+                let curr_code : string = el?value
+                Console.Log("create i: " + i.ToString() + " curr_code: " + curr_code + " el: ", el)
+                match curr_code.Substring(0,1) with
+                | "M" ->
+                    code_found.Append("<option value='" + curr_code + "'>" + curr_code + "</option>").Ignore
+                | _ -> ()
+            ).Ignore
+        | _ -> 
+            form.Find("input[name=AlertKey]").Prop("readonly",true).Ignore
+            let curr_alert_code : string = code_found.Val().ToString()
+            Console.Log("update curr_code: ", curr_alert_code)
+            code_found.Empty().Ignore
+            code_found.Append("<option value='" + curr_alert_code + "'>" + curr_alert_code + "</option>").Ignore
+            code_found.Val(curr_alert_code).Ignore
+            Console.Log("code_found", code_found)
+            match curr_alert_code.Substring(0,1) with
+            | "A" ->
+                form.Find("input[name=Portfolio]").Prop("readonly",true).Ignore
+                form.Find("input[name=Commodity]").Prop("readonly",true).Ignore
+            | _ -> ()
+        form.Find("textarea[name=Note]").Css("width","550px").Attr("rows","6").Ignore
+        form.Find("textarea[name=Outcome]").Css("width","550px").Attr("rows","6").Ignore		
