@@ -190,9 +190,12 @@ module Server =
         ComputePL bookCo input Alerting.EURCurrency
     let convertBalance2Table (b: CostBalance) (note: string option) : (string * obj) array =
         let row = [|
-            ("PayAmount", b.PayAmount :> obj);
-            ("ReceiveAmount", b.ReceiveAmount :> obj);
-            ("Margin", b.Margin :> obj);
+            ("PL Currency", b.Currency :> obj):
+            ("Pay Amount", b.PayAmount.ToString("N0") :> obj);
+            ("Receive Amount", b.ReceiveAmount.ToString("N0") :> obj);
+            ("Margin", b.Margin.ToString("N0") :> obj);
+            ("Pay Relevant", (if (b.PayCount > 0) then "Yes" else "No") :> obj);
+            ("Receive Relevant", (if (b.ReceiveCount > 0) then "Yes" else "No") :> obj);
         |] 
         Option.fold (fun r n -> 
             Array.append r [| ("note", n :> obj)|]
