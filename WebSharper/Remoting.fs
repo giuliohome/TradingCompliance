@@ -425,6 +425,30 @@ module Server =
             with | _ -> ()
         }
 
+    let ComputePL (bookCo:string) (input:string) (curr: string) : Async<Result<CostBalance, string>> = async {
+        match input with
+        | Valid selection -> 
+            match selection with
+            | IntSel cargoId ->
+                let balances, msg = Alerting.ComputePLWeb( ServerModel.AppDB, bookCo, cargoId, curr)
+                return 
+                    balances 
+                    |> Seq.tryHead 
+                    |> Option.fold 
+                        (fun _ balance -> Ok balance) 
+                        (Result.Error <| "Cargo id not found: " + cargoId.ToString())
+            | NoSelection -> 
+                return Result.Error "Select a cargo id to get the PL"
+        | _ -> 
+            return Result.Error <| "Not a valid input: " + input
+    }
+    [<Rpc>]
+    let PLComputeUSD (bookCo:string) (input:string) : Async<Result<CostBalance, string>> =
+        ComputePL bookCo input Alerting.USDCurrency
+    [<Rpc>]
+    let PLComputeEUR (bookCo:string) (input:string) : Async<Result<CostBalance, string>> =
+        ComputePL bookCo input Alerting.EURCurrency        
+        
     type ServerImportResponse = ImportOkResponse of string * string | ImportError of string
     [<Rpc>]
     let SingleImport (bookCo:string) (asofStr:string) : Async<ServerImportResponse> =
