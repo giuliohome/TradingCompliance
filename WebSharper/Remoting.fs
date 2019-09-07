@@ -121,7 +121,7 @@ module Server =
     [<JavaScript>]
     type SortMethod = | Numeric of string | Alphanumeric of string
     [<JavaScript>]
-    type DBTable = | EndurTradeValid | EndurNominationValid | EndurCost
+    type DBTable = | EndurTradeValid | EndurNominationValid | EndurCost | CargoPL
     [<JavaScript>]
     type DBTableResponse = {items: (string * obj) array array; headers: SortMethod array; table: DBTable } 
     [<JavaScript>]
@@ -131,12 +131,15 @@ module Server =
     [<JavaScript>]
     type CostResponse = {costs: (string * obj) array array; headers: SortMethod array } 
     [<JavaScript>]
+    type BalanceResponse = {balances: (string * obj) array array; headers: SortMethod array } 
+    [<JavaScript>]
     type DBResponse<'a> = Response of 'a | Error of DBTable * string
     [<JavaScript>]
     type ServerTradeResponse = 
         { tradeResp: DBResponse<TradeResponse>; 
           nominResp: DBResponse<NominationResponse>; 
-          costResp: DBResponse<CostResponse>}
+          costResp: DBResponse<CostResponse>;
+          plResp: DBResponse<BalanceResponse>}
     [<JavaScript>]
     type ResponseReceived<'a> = | Received of ServerTradeResponse | NoInput of string | GeneralError of string
     
@@ -168,16 +171,58 @@ module Server =
                 return [ "Server Exception:"; exc.Message ; exc.StackTrace ]
             }
 
-    let extractTrades (db:DB) = db.trades
-    let extractNominations (db:DB) = db.nominations
-    let extractCosts (db:DB) = db.costs
+    let ComputePL (bookCo:string) (selection:ParsedTrade) (curr: string) : Async<Result<CostBalance, string>> = async {
+            match selection with
+            | IntSel cargoId ->
+                let balances, msg = Alerting.ComputePLWeb( ServerModel.AppDB, bookCo, cargoId, curr)
+                return 
+                    balances 
+                    |> Seq.tryHead 
+                    |> Option.fold 
+                        (fun _ balance -> Ok balance) 
+                        (Result.Error <| "Cargo id not found: " + cargoId.ToString())
+            | NoSelection -> 
+                return Result.Error "Select a cargo id to get the PL"
+    }
+    let PLComputeUSD (bookCo:string) (input:ParsedTrade) : Async<Result<CostBalance, string>> =
+        ComputePL bookCo input Alerting.USDCurrency
+    let PLComputeEUR (bookCo:string) (input:ParsedTrade) : Async<Result<CostBalance, string>> =
+        ComputePL bookCo input Alerting.EURCurrency
+    let convertBalance2Table (b: CostBalance) (note: string option) : (string * obj) array =
+        let row = [|
+            ("PayAmount", b.PayAmount :> obj);
+            ("ReceiveAmount", b.ReceiveAmount :> obj);
+            ("Margin", b.Margin :> obj);
+        |] 
+        Option.fold (fun r n -> 
+            Array.append r [| ("note", n :> obj)|]
+        ) row note
 
-    let RetrieveItemsDB (bookCo:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> = async {
+    let ComputeCargoPL (input:ParsedTrade) (bookCo:string) : Result<(string * obj) array array, string> =
+        let usdBalance = PLComputeUSD bookCo input |> Async.RunSynchronously
+        let eurBalance = PLComputeEUR bookCo input |> Async.RunSynchronously
+        match usdBalance, eurBalance with
+        | Result.Ok usdResult, Result.Ok eurResult ->
+            Result.Ok <| [|  convertBalance2Table usdResult None; convertBalance2Table eurResult None |]
+        | Result.Ok usdResult, Result.Error eurError ->
+            Result.Ok <| [|  convertBalance2Table usdResult (Some eurError);|]
+        | Result.Error usdError, Result.Ok eurResult ->
+            Result.Ok <| [|  convertBalance2Table eurResult (Some usdError);|]
+        | Result.Error usdError,  Result.Error eurError ->
+            Result.Error (usdError + ", " + eurError)
+
+            
+    let extractTrades (db:DB) sel book = Result.Ok <| db.trades sel book
+    let extractNominations (db:DB) sel book = Result.Ok <| db.nominations sel book
+    let extractCosts (db:DB) sel book = Result.Ok <| db.costss sel book
+
+    let RetrieveItems (bookCo:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> = async {
         match input with
         | Valid selection -> 
             try
-                let db = SqlDB.DB()
-                let trades = extract db selection bookCo
+                let tradesTry : Result<(string * obj) array array, string> = extract selection bookCo
+                match tradesTry with
+                | Result.Ok trades ->
                 if (trades |> Array.length > 0) then
                     return Response { 
                     table = tableDB;
@@ -192,9 +237,14 @@ module Server =
                     }
                 else 
                     return Error (tableDB, "no " + tableName + " selected for bookco '" + bookCo + "' and input '" + input+ "'")
+                | Result.Error err -> return Error (tableDB, err)
             with e -> return Error (tableDB, e.Message)
         | _ -> return Error (tableDB, "Not a valid " + tableName + " number: " +  input)
         }
+    let RetrieveItemsDB (bookCo:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> =
+            let db = DB()
+            RetrieveItems bookCo input (extract db) tableDB tableName 
+            
 
     let RetrieveTrades (bookCo:string) (input:string) : Async<DBResponse<DBTableResponse>> = 
         RetrieveItemsDB bookCo input extractTrades EndurTradeValid "trade"
@@ -205,6 +255,9 @@ module Server =
     let RetrieveCosts (bookCo:string) (input:string) : Async<DBResponse<DBTableResponse>> = 
         RetrieveItemsDB bookCo input extractCosts EndurCost "cost"
 
+    let RetrievePL (bookCo:string) (input:string) : Async<DBResponse<DBTableResponse>> =
+        RetrieveItems bookCo input ComputeCargoPL CargoPL "P/L"
+        
     [<Rpc>]
     let RetrieveOilData (bookCo:string) (input:string) : Async<ServerTradeResponse> = async {
         let bookCoSrv = ServerModel.getBookCo bookCo
@@ -217,7 +270,8 @@ module Server =
         let! oilData =
             [ RetrieveTrades bookCoSrv input; 
               RetrieveNominations bookCoSrv input;
-              RetrieveCosts bookCoSrv input; ]
+              RetrieveCosts bookCoSrv input; 
+              RetrievePL bookCoSrv input]
             |> Async.Parallel
         
         let trades : DBResponse<TradeResponse> =
@@ -265,7 +319,22 @@ module Server =
                 
             ) |> Array.head
 
-        return { tradeResp = trades; nominResp = nomins; costResp =  costs}
+        let balances : DBResponse<BalanceResponse> =
+            oilData
+            |> Array.filter (fun d -> 
+                match d with
+                | Response r -> r.table = CargoPL
+                | Error ( t, _) -> t = CargoPL
+            )
+            |> Array.map(fun d -> 
+                match d with
+                | Response r -> 
+                    Response { balances = r.items; headers = r.headers}
+                | Error ( t, e) -> Error ( t, e)
+                
+            ) |> Array.head
+
+        return { tradeResp = trades; nominResp = nomins; costResp =  costs; plResp = balances}
     }
 
     [<JavaScript>]
@@ -424,30 +493,7 @@ module Server =
                 db.analystCreate bookCoSrv analyst
             with | _ -> ()
         }
-
-    let ComputePL (bookCo:string) (input:string) (curr: string) : Async<Result<CostBalance, string>> = async {
-        match input with
-        | Valid selection -> 
-            match selection with
-            | IntSel cargoId ->
-                let balances, msg = Alerting.ComputePLWeb( ServerModel.AppDB, bookCo, cargoId, curr)
-                return 
-                    balances 
-                    |> Seq.tryHead 
-                    |> Option.fold 
-                        (fun _ balance -> Ok balance) 
-                        (Result.Error <| "Cargo id not found: " + cargoId.ToString())
-            | NoSelection -> 
-                return Result.Error "Select a cargo id to get the PL"
-        | _ -> 
-            return Result.Error <| "Not a valid input: " + input
-    }
-    [<Rpc>]
-    let PLComputeUSD (bookCo:string) (input:string) : Async<Result<CostBalance, string>> =
-        ComputePL bookCo input Alerting.USDCurrency
-    [<Rpc>]
-    let PLComputeEUR (bookCo:string) (input:string) : Async<Result<CostBalance, string>> =
-        ComputePL bookCo input Alerting.EURCurrency        
+      
         
     type ServerImportResponse = ImportOkResponse of string * string | ImportError of string
     [<Rpc>]
