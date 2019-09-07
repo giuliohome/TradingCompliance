@@ -373,6 +373,7 @@ module Client =
             let tradeTableDoc = buildTableHtml input.tradeResp (fun resp -> resp.trades) "trade"
             let nominTableDoc = buildTableHtml input.nominResp (fun resp -> resp.nominations) "nomin"
             let costTableDoc = buildTableHtml input.costResp (fun resp -> resp.costs) "cost"
+            let plTableDoc = buildTableHtml input.plResp (fun res -> resp.plResp) "pl"
             div [] [
                 h2 [] [text "Trades"]
                 tradeTableDoc; 
@@ -380,6 +381,8 @@ module Client =
                 nominTableDoc; 
                 h2 [] [text "Costs"]
                 costTableDoc;
+                h2 [] [text "P&L"]
+                plTableDoc;
             ]
         | NoInput str ->
             Console.Log("response no input: " + str)
