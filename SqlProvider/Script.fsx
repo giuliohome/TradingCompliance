@@ -10,6 +10,7 @@ open System
 
 // Define your library scripting code here
 
+async {
 try 
     let book = "ENI - LE"
     let db = DB()
@@ -17,15 +18,18 @@ try
     // you may need  --define:OFFLINE in tools>options>f# tools> f# interactive (restart fsi)
     #if !OFFLINE
     printfn "Test trades"
-    db.trades NoSelection "ENI - LE"
+    let! trades = db.trades NoSelection "ENI - LE"
+    trades
     |> Array.take 10
     |> Array.iter (printfn "%A")
     printfn "Test nominations"
-    db.nominations NoSelection "ENI - LE"
+    let! nominations = db.nominations NoSelection "ENI - LE"
+    nominations
     |> Array.take 10
     |> Array.iter (printfn "%A")    
     printfn "Test costs"
-    db.costs NoSelection "ENI - LE"
+    let! costs = db.costs NoSelection "ENI - LE"
+    costs
     |> Array.take 10
     |> Array.iter (printfn "%A")
     #endif
@@ -57,5 +61,5 @@ try
 with
  | exc ->
      printfn "Error %s " (exc.ToString())
-
+} |> Async.StartImmediate
 

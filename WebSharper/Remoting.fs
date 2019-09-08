@@ -222,15 +222,24 @@ module Server =
     }
 
             
-    let extractTrades (db:DB) sel book = async { return Result.Ok <| db.trades sel book}
-    let extractNominations (db:DB) sel book = async { return Result.Ok <| db.nominations sel book}
-    let extractCosts (db:DB) sel book = async { return Result.Ok <| db.costs sel book}
+    let extractTrades (db:DB) sel book = async { 
+        let! queryRes = db.trades sel book
+        return Result.Ok queryRes 
+    }
+    let extractNominations (db:DB) sel book = async {  
+        let! queryRes = db.nominations sel book
+        return Result.Ok queryRes 
+    }
+    let extractCosts (db:DB) sel book = async {  
+        let! queryRes = db.costs sel book
+        return Result.Ok queryRes 
+    }
 
     let RetrieveItems (bookCo:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> = async {
         match input with
         | Valid selection -> 
             try
-                let! tradesTry= extract selection bookCo
+                let! (tradesTry: Result<SqlDB.DBTable, string>) = extract selection bookCo
                 match tradesTry with
                 | Result.Ok trades ->
                 if (trades |> Array.length > 0) then

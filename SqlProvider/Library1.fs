@@ -232,41 +232,48 @@ module SqlDB =
             context.SubmitUpdates()
         | None -> ()
     
+    type DBTable = (string * obj) array array
     type DB() =
-        member x.trades (sel: ParsedTrade) (book: string) : (string * obj) array array= 
+        member x.trades (sel: ParsedTrade) (book: string) : Async<DBTable> = async {
         #if OFFLINE
             printfn "only ONLINE, no offline table at the moment"
-            [||]
+            return [||]
         #else
-            tradesQuery book sel |> Seq.toArray 
+            let! queryRes = tradesQuery book sel |> Array.executeQueryAsync 
+            return queryRes
             |> Array.map(fun (t,n_del,n_rec) -> 
                 t.ColumnValues
                 |> Seq.append ([("Del Cargo ID", n_del :> obj)] 
                 |> Seq.append [("Rec Cargo ID", n_rec :> obj)] ) 
                 |> Seq.toArray)
         #endif
+        } 
 
-        member x.nominations  (sel: ParsedTrade) (book: string) : (string * obj) array array =
+        member x.nominations  (sel: ParsedTrade) (book: string) : Async<DBTable> = async {
         #if OFFLINE
             printfn "only ONLINE, no offline table at the moment"
-            [||]
+            return [||]
         #else
-            nominationsQuery book sel |> Seq.toArray 
+            let! queryRes = nominationsQuery book sel |> Array.executeQueryAsync  
+            return queryRes
             |> Array.map(fun n -> 
                 n.ColumnValues
                 |> Seq.toArray)
         #endif
+        }
         
-        member x.costs  (sel: ParsedTrade) (book: string) : (string * obj) array array =
+        member x.costs  (sel: ParsedTrade) (book: string) : Async<DBTable> = async {
         #if OFFLINE
             printfn "only ONLINE, no offline table at the moment"
-            [||]
+            return [||]
         #else
-            costsQuery book sel |> Seq.toArray 
+            let! queryRes = costsQuery book sel |> Array.executeQueryAsync  
+            return queryRes
             |> Array.map(fun n -> 
                 n.ColumnValues
                 |> Seq.toArray)
         #endif
+        }
         
         member x.logsRead (book:string) : BookLog[] =
         #if OFFLINE
