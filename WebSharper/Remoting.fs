@@ -201,10 +201,16 @@ module Server =
             Array.append r [| ("note", n :> obj)|]
         ) row note
 
-    let ComputeCargoPL (input:ParsedTrade) (bookCo:string) : Result<(string * obj) array array, string> =
-        let usdBalance = PLComputeUSD bookCo input |> Async.RunSynchronously
-        let eurBalance = PLComputeEUR bookCo input |> Async.RunSynchronously
-        match usdBalance, eurBalance with
+    let ComputeCargoPL (input:ParsedTrade) (bookCo:string) : Async<Result<(string * obj) array array, string>> = async {
+    
+        let! parallelComputePL =
+            [|
+                 PLComputeUSD bookCo input;
+                 PLComputeEUR bookCo input
+            |] |> Async.Parallel
+        let usdBalance = parallelComputePL.[0]
+        let eurBalance = parallelComputePL.[1]
+        return match usdBalance, eurBalance with
         | Result.Ok usdResult, Result.Ok eurResult ->
             Result.Ok <| [|  convertBalance2Table usdResult None; convertBalance2Table eurResult None |]
         | Result.Ok usdResult, Result.Error eurError ->
@@ -213,17 +219,18 @@ module Server =
             Result.Ok <| [|  convertBalance2Table eurResult (Some usdError);|]
         | Result.Error usdError,  Result.Error eurError ->
             Result.Error (usdError + if (eurError <> usdError) then ", " + eurError else "")
+    }
 
             
-    let extractTrades (db:DB) sel book = Result.Ok <| db.trades sel book
-    let extractNominations (db:DB) sel book = Result.Ok <| db.nominations sel book
-    let extractCosts (db:DB) sel book = Result.Ok <| db.costs sel book
+    let extractTrades (db:DB) sel book = async { return Result.Ok <| db.trades sel book}
+    let extractNominations (db:DB) sel book = async { return Result.Ok <| db.nominations sel book}
+    let extractCosts (db:DB) sel book = async { return Result.Ok <| db.costs sel book}
 
     let RetrieveItems (bookCo:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> = async {
         match input with
         | Valid selection -> 
             try
-                let tradesTry : Result<(string * obj) array array, string> = extract selection bookCo
+                let! tradesTry= extract selection bookCo
                 match tradesTry with
                 | Result.Ok trades ->
                 if (trades |> Array.length > 0) then
