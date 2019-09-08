@@ -141,7 +141,7 @@ module Server =
           costResp: DBResponse<CostResponse>;
           plResp: DBResponse<BalanceResponse>}
     [<JavaScript>]
-    type ResponseReceived<'a> = | Received of ServerTradeResponse | NoInput of string | GeneralError of string
+    type ResponseReceived<'a> = | Received of 'a | NoInput of string | GeneralError of string
     
     let (|Valid|_|) (str:string) =
         if String.IsNullOrWhiteSpace str then 
@@ -180,7 +180,7 @@ module Server =
                     |> Seq.tryHead 
                     |> Option.fold 
                         (fun _ balance -> Ok balance) 
-                        (Result.Error <| "Cargo id not found: " + cargoId.ToString())
+                        (Result.Error <| "Cargo id not found: " + cargoId.ToString() + " for " + bookCo)
             | NoSelection -> 
                 return Result.Error "Select a cargo id to get the PL"
     }
@@ -190,12 +190,12 @@ module Server =
         ComputePL bookCo input Alerting.EURCurrency
     let convertBalance2Table (b: CostBalance) (note: string option) : (string * obj) array =
         let row = [|
-            ("PL Currency", b.Currency :> obj):
+            ("PL Currency", b.Currency :> obj);
             ("Pay Amount", b.PayAmount.ToString("N0") :> obj);
             ("Receive Amount", b.ReceiveAmount.ToString("N0") :> obj);
             ("Margin", b.Margin.ToString("N0") :> obj);
-            ("Pay Relevant", (if (b.PayCount > 0) then "Yes" else "No") :> obj);
-            ("Receive Relevant", (if (b.ReceiveCount > 0) then "Yes" else "No") :> obj);
+            ("Delivery Relevant", (if (b.DeliveryCount > 0) then "Yes" else "No") :> obj);
+            ("Receipt Relevant", (if (b.ReceiveCount > 0) then "Yes" else "No") :> obj);
         |] 
         Option.fold (fun r n -> 
             Array.append r [| ("note", n :> obj)|]
@@ -212,12 +212,12 @@ module Server =
         | Result.Error usdError, Result.Ok eurResult ->
             Result.Ok <| [|  convertBalance2Table eurResult (Some usdError);|]
         | Result.Error usdError,  Result.Error eurError ->
-            Result.Error (usdError + ", " + eurError)
+            Result.Error (usdError + if (eurError <> usdError) then ", " + eurError else "")
 
             
     let extractTrades (db:DB) sel book = Result.Ok <| db.trades sel book
     let extractNominations (db:DB) sel book = Result.Ok <| db.nominations sel book
-    let extractCosts (db:DB) sel book = Result.Ok <| db.costss sel book
+    let extractCosts (db:DB) sel book = Result.Ok <| db.costs sel book
 
     let RetrieveItems (bookCo:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> = async {
         match input with
@@ -269,7 +269,8 @@ module Server =
         if (not authorized) then
             return { tradeResp = Error(EndurTradeValid, "Sorry you are not authorized to read trades of BookCo: " + bookCo ); 
                      nominResp = Error(EndurNominationValid, "Sorry you are not authorized to read nominations of BookCo: " + bookCo ); 
-                     costResp =  Error(EndurCost, "Sorry you are not authorized to read costs of BookCo: " + bookCo )} else
+                     costResp =  Error(EndurCost, "Sorry you are not authorized to read costs of BookCo: " + bookCo );
+                     plResp =  Error(EndurCost, "Sorry you are not authorized to read PL of BookCo: " + bookCo )} else
         let! oilData =
             [ RetrieveTrades bookCoSrv input; 
               RetrieveNominations bookCoSrv input;

@@ -367,13 +367,13 @@ module Client =
                     text err
                     ]
 
-    let TableRetrieve (input_received: ResponseReceived<TradeResponse>) = 
+    let TableRetrieve (input_received: ResponseReceived<ServerTradeResponse>) = 
         match input_received with
         | Received input ->
             let tradeTableDoc = buildTableHtml input.tradeResp (fun resp -> resp.trades) "trade"
             let nominTableDoc = buildTableHtml input.nominResp (fun resp -> resp.nominations) "nomin"
             let costTableDoc = buildTableHtml input.costResp (fun resp -> resp.costs) "cost"
-            let plTableDoc = buildTableHtml input.plResp (fun res -> resp.plResp) "pl"
+            let plTableDoc = buildTableHtml input.plResp (fun resp -> resp.balances) "pl"
             div [] [
                 h2 [] [text "Trades"]
                 tradeTableDoc; 

@@ -258,7 +258,7 @@ module ClientBase =
                     ]
             )
         ]
-		
+
     let customForm (ev, dt) =
         let form :JQuery = JQuery.Of(dt?form :> obj)
         form.Css("width","600px").Ignore  
@@ -290,4 +290,4 @@ module ClientBase =
                 form.Find("input[name=Commodity]").Prop("readonly",true).Ignore
             | _ -> ()
         form.Find("textarea[name=Note]").Css("width","550px").Attr("rows","6").Ignore
-        form.Find("textarea[name=Outcome]").Css("width","550px").Attr("rows","6").Ignore		
+        form.Find("textarea[name=Outcome]").Css("width","550px").Attr("rows","6").Ignore
