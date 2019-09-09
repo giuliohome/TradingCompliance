@@ -144,7 +144,7 @@ module SqlDB =
             query {
                 for c in context.OilPhysical.EndurCost do
                 join n in context.OilPhysical.EndurNominationValid
-                    on ( (c.CargoId, c.DeliveryId) = n.CargoId, n.DeliveryId) )
+                    on ( (c.CargoId, c.DeliveryId) = (n.CargoId, n.DeliveryId) )
                 where (c.BookingCompany = book &&
                     (n.DeliveryDealNumber = c.DealNumber || n.ReceiptDealNumber = c.DealNumber) &&
                     c.FeeStatus <> Cost.ClosedFeeStatus &&
