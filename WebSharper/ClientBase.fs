@@ -69,10 +69,10 @@ module ClientBase =
     type AlertSelection = { book: string; codes: string array; status: string; 
         dateFrom: string; dateTo: string; analyst: string; alertKey: string; showClosed: bool; }
     let now = Moment() // .Locale("uk") not needed
-    let initDateTo = now.Format("DD/MM/YY")
-    let initAsofFrom = now.Format("DD/MM/YY")
-    let initAsofTo = now.Format("DD/MM/YY")
-    let initDateFrom = now.Add(-14,"d").Format("DD/MM/YY")
+    let initDateTo = now.Format("DD/MM/YYYY")
+    let initAsofFrom = now.Format("DD/MM/YYYY")
+    let initAsofTo = now.Format("DD/MM/YYYY")
+    let initDateFrom = now.Add(-14,"d").Format("DD/MM/YYYY")
     let emptyAlertSel =  { book = ""; codes = [||]; status = ""; 
         dateFrom = initDateFrom; dateTo = initDateTo; analyst = ""; alertKey = ""; showClosed = false}
     let alertSelVar = Var.Create emptyAlertSel // for alert jtable select changed
@@ -194,7 +194,7 @@ module ClientBase =
             }).on('change', function() {
                 $2($0.val());
               });", datePk, format, onChange)
-        JS.Inline("$0.val($1);",datePk, value)
+        JS.Inline("$0.datepicker('setDate',$1);",datePk, value)
     
     let dateStdFormat = "dd/mm/yy"
 
