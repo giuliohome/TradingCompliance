@@ -10,6 +10,28 @@ open System
 
 // Define your library scripting code here
 
+// specific test case for https://github.com/giuliohome/TradingCompliance/issues/5
+// sql lib not retrieving all the correct records for a specific cargo id?
+async {
+    try 
+        let book = "ENI - LE"
+        let db = DB()
+        let! costs = db.costs (IntSel 20052) "US_ETS INC - LE"
+        printfn "number of cost records: %d" (costs |> Array.length)
+        costs
+        |> Array.iter (printfn "%A")
+   
+        printfn "Regression Test for costs"
+        let! costs = db.costs NoSelection "ENI - LE"
+        costs
+        |> Array.take 10
+        |> Array.iter (printfn "%A")
+    with
+     | exc ->
+         printfn "Error %s " (exc.ToString())
+} |> Async.StartImmediate
+
+
 async {
 try 
     let book = "ENI - LE"

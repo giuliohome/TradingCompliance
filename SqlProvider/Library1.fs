@@ -36,9 +36,11 @@ module SqlDB =
                 >
 
     #endif
-    //FSharp.Data.Sql.Common.QueryEvents.SqlQueryEvent 
-    //|> Event.add (fun e -> 
-    //    System.Diagnostics.Debug.WriteLine ("Executing SQL: " + (e.ToRawSql())))
+    #if INTERACTIVE
+    FSharp.Data.Sql.Common.QueryEvents.SqlQueryEvent 
+    |> Event.add (fun e -> 
+        printfn  "Executing SQL: %s" (e.ToRawSql()))
+    #endif
 
     let AppDB = "TSS_DB"
     #if INTERACTIVE 
@@ -130,6 +132,7 @@ module SqlDB =
                 join n in context.OilPhysical.EndurNominationValid
                     on ( (c.CargoId, c.DeliveryId) = (n.CargoId, n.DeliveryId) )
                 where (c.BookingCompany = book &&
+                    (n.DeliveryDealNumber = c.DealNumber || n.ReceiptDealNumber = c.DealNumber) &&
                     c.FeeStatus <> Cost.ClosedFeeStatus &&
                     c.FeeType <> delete_type
                     )
@@ -141,8 +144,9 @@ module SqlDB =
             query {
                 for c in context.OilPhysical.EndurCost do
                 join n in context.OilPhysical.EndurNominationValid
-                    on ( (c.CargoId, c.DeliveryId) = (n.CargoId, n.DeliveryId) )
+                    on ( (c.CargoId, c.DeliveryId) = n.CargoId, n.DeliveryId) )
                 where (c.BookingCompany = book &&
+                    (n.DeliveryDealNumber = c.DealNumber || n.ReceiptDealNumber = c.DealNumber) &&
                     c.FeeStatus <> Cost.ClosedFeeStatus &&
                     c.FeeType <> delete_type &&
                         ( c.CounterpartyId = i_str ||
