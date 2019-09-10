@@ -130,9 +130,9 @@ module SqlDB =
             query {
                 for c in context.OilPhysical.EndurCost do
                 join n in context.OilPhysical.EndurNominationValid
-                    on ( (c.CargoId, c.DeliveryId) = (n.CargoId, n.DeliveryId) )
+                    // fix with latest version (1.1.68) of SQLProvider https://github.com/fsprojects/SQLProvider/issues/634#issuecomment-529852061
+                    on ( (c.CargoId, c.DeliveryId, c.DealNumber) = (n.CargoId, n.DeliveryId, if n.DeliveryDealNumber>0 then n.DeliveryDealNumber else n.ReceiptDealNumber) )
                 where (c.BookingCompany = book &&
-                    (n.DeliveryDealNumber = c.DealNumber || n.ReceiptDealNumber = c.DealNumber) &&
                     c.FeeStatus <> Cost.ClosedFeeStatus &&
                     c.FeeType <> delete_type
                     )
@@ -144,9 +144,9 @@ module SqlDB =
             query {
                 for c in context.OilPhysical.EndurCost do
                 join n in context.OilPhysical.EndurNominationValid
-                    on ( (c.CargoId, c.DeliveryId) = (n.CargoId, n.DeliveryId) )
+                    // fix with latest version (1.1.68) of SQLProvider https://github.com/fsprojects/SQLProvider/issues/634#issuecomment-529852061
+                    on ( (c.CargoId, c.DeliveryId, c.DealNumber) = (n.CargoId, n.DeliveryId, if n.DeliveryDealNumber>0 then n.DeliveryDealNumber else n.ReceiptDealNumber) )
                 where (c.BookingCompany = book &&
-                    (n.DeliveryDealNumber = c.DealNumber || n.ReceiptDealNumber = c.DealNumber) &&
                     c.FeeStatus <> Cost.ClosedFeeStatus &&
                     c.FeeType <> delete_type &&
                         ( c.CounterpartyId = i_str ||

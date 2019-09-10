@@ -14,7 +14,6 @@ open System
 // sql lib not retrieving all the correct records for a specific cargo id?
 async {
     try 
-        let book = "ENI - LE"
         let db = DB()
         let! costs = db.costs (IntSel 20052) "US_ETS INC - LE"
         printfn "number of cost records: %d" (costs |> Array.length)
@@ -22,7 +21,7 @@ async {
         |> Array.iter (printfn "%A")
    
         printfn "Regression Test for costs"
-        let! costs = db.costs NoSelection "ENI - LE"
+        let! costs = db.costs NoSelection "US_ETS INC - LE"
         costs
         |> Array.take 10
         |> Array.iter (printfn "%A")
