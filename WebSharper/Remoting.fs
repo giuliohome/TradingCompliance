@@ -235,12 +235,15 @@ module Server =
         return Result.Ok queryRes 
     }
 
-    let dateReformatter (line: string * obj) =
+    let reformat (line: string * obj) =
         let desc, value = line
         match value with
         | :? DateTime -> 
             let date = value :?> DateTime
             desc, date.ToShortDateString() :> obj
+        | :? Decimal -> 
+            let amount = value :?> Decimal
+            desc, amount.ToString("N0") :> obj
         | _ -> line
 
     let RetrieveItems (bookCo:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> = async {
@@ -253,7 +256,7 @@ module Server =
                 if (trades |> Array.length > 0) then
                     return Response { 
                     table = tableDB;
-                    items = trades |> Array.map (Array.map dateReformatter);
+                    items = trades |> Array.map (Array.map reformat);
                     headers = 
                     [|for (k,v) in trades.[0] do 
                         match v with
