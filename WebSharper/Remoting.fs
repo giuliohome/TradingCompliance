@@ -235,6 +235,14 @@ module Server =
         return Result.Ok queryRes 
     }
 
+    let dateReformatter (line: string * obj) =
+        let desc, value = line
+        match value with
+        | :? DateTime -> 
+            let date = value :?> DateTime
+            desc, date.ToShortDateString() :> obj
+        | _ -> line
+
     let RetrieveItems (bookCo:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> = async {
         match input with
         | Valid selection -> 
@@ -245,7 +253,7 @@ module Server =
                 if (trades |> Array.length > 0) then
                     return Response { 
                     table = tableDB;
-                    items = trades;
+                    items = trades |> Array.map (Array.map dateReformatter);
                     headers = 
                     [|for (k,v) in trades.[0] do 
                         match v with
