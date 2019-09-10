@@ -238,11 +238,9 @@ module Server =
     let reformat (line: string * obj) =
         let desc, value = line
         match value with
-        | :? DateTime -> 
-            let date = value :?> DateTime
+        | :? DateTime as date -> 
             desc, date.ToShortDateString() :> obj
-        | :? Decimal -> 
-            let amount = value :?> Decimal
+        | :? Decimal as amount -> 
             desc, amount.ToString("N0") :> obj
         | _ -> line
 
