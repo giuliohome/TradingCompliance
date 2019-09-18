@@ -210,15 +210,16 @@ module Server =
             |] |> Async.Parallel
         let usdBalance = parallelComputePL.[0]
         let eurBalance = parallelComputePL.[1]
-        return match usdBalance, eurBalance with
-        | Result.Ok usdResult, Result.Ok eurResult ->
-            Result.Ok <| [|  convertBalance2Table usdResult None; convertBalance2Table eurResult None |]
-        | Result.Ok usdResult, Result.Error eurError ->
-            Result.Ok <| [|  convertBalance2Table usdResult (Some eurError);|]
-        | Result.Error usdError, Result.Ok eurResult ->
-            Result.Ok <| [|  convertBalance2Table eurResult (Some usdError);|]
-        | Result.Error usdError,  Result.Error eurError ->
-            Result.Error (usdError + if (eurError <> usdError) then ", " + eurError else "")
+        return 
+            match usdBalance, eurBalance with
+            | Result.Ok usdResult, Result.Ok eurResult ->
+                Result.Ok <| [|  convertBalance2Table usdResult None; convertBalance2Table eurResult None |]
+            | Result.Ok usdResult, Result.Error eurError ->
+                Result.Ok <| [|  convertBalance2Table usdResult (Some eurError);|]
+            | Result.Error usdError, Result.Ok eurResult ->
+                Result.Ok <| [|  convertBalance2Table eurResult (Some usdError);|]
+            | Result.Error usdError,  Result.Error eurError ->
+                Result.Error (usdError + if (eurError <> usdError) then ", " + eurError else "")
     }
 
             
@@ -591,7 +592,8 @@ module Server =
                     Import2TSS.Report.ExtractReport + " executed for " + String.Join(",",selParamsText) 
                     + " -> " + if isOk then "ok" else log}}
             with |exc ->
-                return {ReportName = Import2TSS.Report.ExtractReport; Result = Ko {Error = exc.Message}}
+                return {ReportName = Import2TSS.Report.ExtractReport; Result = Ko {Error = 
+                    if (exc.InnerException <> null) then exc.InnerException.Message else exc.Message}}
         }
 
     let runAlertExtractDBLib (rptParams: Map<string,string>) (bookCoSrv: string) : Async<FlatExtractAlert[]> = async {
@@ -608,6 +610,11 @@ module Server =
              return extracted
          }
 
+    let runCptyFreqRptDBLib (rptParams: Map<string,string>) (bookCoSrv: string) : Async<CptyFrequency[]> = async {
+             let! extracted = Import2TSS.Report.GetFrequencyAsync(ServerModel.AppDB, Dictionary(rptParams), bookCoSrv)  |> Async.AwaitTask
+             return extracted
+         } 
+
 
     [<Rpc>]
     let ExtractReport (bookCo:string) (rptParams: Map<string,string>) : Async<ReportResult> =
@@ -616,6 +623,10 @@ module Server =
     [<Rpc>]
     let EscalationReport (bookCo:string) (rptParams: Map<string,string>) : Async<ReportResult> =
         RunInternalReport bookCo rptParams runEscalationReportDBLib
+
+    [<Rpc>]
+    let CptyFreqRpt (bookCo:string) (rptParams: Map<string,string>) : Async<ReportResult> =
+        RunInternalReport bookCo rptParams runCptyFreqRptDBLib
     
 //[<JavaScript>]
 //module Report =

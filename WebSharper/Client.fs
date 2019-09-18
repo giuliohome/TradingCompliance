@@ -10,6 +10,7 @@ open WebSharper.JQuery
 open SqlLib
 open ClientBase
 open ARecs
+open WebSharper.Moment
 
 
 [<JavaScript>]
@@ -60,6 +61,14 @@ module Client =
     let RptResultVar  = Var.Create (None: ReportResult option)
     let SelRptVar = Var.Create ""
     let RptRunningVar = Var.Create false
+    let CptyFreqMinReceiptVar = Var.Create "5"
+    let CptyFreqMinDeliveryVar = Var.Create "5"
+    let TradeCreateAfterVar = Var.Create cptyFreqTradeAfter
+    let CptyFreqTradeAfter_Changed value = 
+        Var.Set TradeCreateAfterVar value
+    let TradeCreateBeforeVar = Var.Create cptyFreqTradeBefore
+    let CptyFreqTradeBefore_Changed value = 
+        Var.Set TradeCreateBeforeVar value
     let AlertExtractAnalystVar = Var.Create ""
     let AlertExtractCptyVar = Var.Create ""
     let AlertExtractAnalyst_OnChange (el: Dom.Element) (ev: Dom.Event) = 
@@ -69,6 +78,23 @@ module Client =
 
     let InitAnalistView el = 
         refreshAnalistView bookVar.Value 
+
+    let RunCptyFreqReport () =
+        async {
+            Var.Set RptRunningVar true
+            Var.Set RptResultVar None
+            let minReceipt = CptyFreqMinReceiptVar.Value
+            let minDelivery = CptyFreqMinDeliveryVar.Value
+            let tradesAfter = TradeCreateAfterVar.Value
+            let tradesBefore = TradeCreateBeforeVar.Value
+            let rptParams = [ (Import2TSS.RptParameter.MinFreqReceipt, minReceipt); 
+                              (Import2TSS.RptParameter.MinFreqDelivery, minDelivery); 
+                              (Import2TSS.RptParameter.TradesCreatedAfter, tradesAfter); 
+                              (Import2TSS.RptParameter.TradesCreatedBefore, tradesBefore)] |> Map.ofSeq
+            let! result = Server.CptyFreqRpt bookVar.Value  rptParams
+            Var.Set RptResultVar <| Some result
+            Var.Set RptRunningVar false
+        } |> Async.StartImmediate
 
     let RunEscalationReport () =
         async {
@@ -424,13 +450,14 @@ module Client =
                 ]
                 tbody [] [
                     for (log: SqlDB.BookLog) in logs do
+                        let asof_date = Moment(log.AsofDate).ToUtc().Add(1,"d")
                         yield tr [] [
                             td [fsz] [
                                 Doc.Button "Details" [] (fun () -> 
-                                    refreshLogViewFromSelection <| Some log.AsofDate
+                                    refreshLogViewFromSelection <| Some (System.DateTime(asof_date.Year(), asof_date.Month() + 1, asof_date.Date()))
                                 )
                             ]
-                            td [fsz] [text (log.AsofDate.ToShortDateString())]
+                            td [fsz] [text (asof_date.Format("DD/MM/YYYY"))]
                             td [fsz] [text log.Status]
                             td [fsz] [text (log.StartDate.ToShortDateString() + " " + log.StartDate.ToShortTimeString())]
                             td [fsz] [text (log.EndDate.ToShortDateString() + " " + log.EndDate.ToShortTimeString())]
@@ -611,6 +638,31 @@ module Client =
           ]
           Doc.BindView (function
             | "" -> Doc.Empty
+            | Import2TSS.Report.CptyFreq ->
+                div [on.afterRender InitAnalistView] [
+                    div [attr.style "padding-bottom: 5px;"] [
+                        span [attr.style "width: 120px; display: inline-block;"] [text Import2TSS.RptParameter.MinFreqReceipt]
+                        Doc.Input [attr.style "width: 200px;"] CptyFreqMinReceiptVar
+                    ]
+                    div [attr.style "padding-bottom: 5px;"] [
+                        span [attr.style "width: 120px; display: inline-block;"] [text Import2TSS.RptParameter.MinFreqDelivery]
+                        Doc.Input [attr.style "width: 200px;"] CptyFreqMinDeliveryVar
+                    ]
+                    br [] []
+                    div [attr.style "padding-bottom: 5px;"; on.afterRender(fun _ -> 
+                            datePicker "#CptyFreqTradeAfter" dateStdFormat CptyFreqTradeAfter_Changed cptyFreqTradeAfter)] [
+                        span [attr.style "width: 120px; display: inline-block;"] [text Import2TSS.RptParameter.TradesCreatedAfter]
+                        input [attr.id "CptyFreqTradeAfter"; attr.style "width: 200px;"] []
+                    ]
+                    div [attr.style "padding-bottom: 5px;"; on.afterRender(fun _ -> 
+                            datePicker "#CptyFreqTradeBefore" dateStdFormat CptyFreqTradeBefore_Changed cptyFreqTradeBefore)] [
+                        span [attr.style "width: 120px; display: inline-block;"] [text Import2TSS.RptParameter.TradesCreatedBefore]
+                        input [attr.id "CptyFreqTradeBefore"; attr.style "width: 200px;"] []
+                    ]
+                    br [] []
+                    RptRunView RunCptyFreqReport
+                    RptResultView downloadLink
+                ]
             | Import2TSS.Report.EscalationReport ->
                 div [on.afterRender InitAnalistView] [
                     div [attr.style "clear: both; padding-bottom: 5px;"] [ 
