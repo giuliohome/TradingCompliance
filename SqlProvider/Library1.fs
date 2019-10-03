@@ -10,6 +10,8 @@ open FSharp.Data.Sql.Providers
 
 module SqlDB =
 
+    type Permission =
+        static member OilWriteETS = "OilWriteETS"
     // aside from project properties for fsc build, you may need --define:OFFLINE in tools>options>f# tools> f# interactive (restart fsi) 
     #if OFFLINE 
     [<Literal>]
@@ -26,7 +28,7 @@ module SqlDB =
     let mySchemaPath =
         __SOURCE_DIRECTORY__ + @"\.sqlserver.schema" // fixed misspelt .\
     [<Literal>]
-    let myConnStr =   @"Data Source=;Initial Catalog=;User ID=;Password="
+    let myConnStr =    @"Data Source=;Initial Catalog=;User ID=;Password="
     type Sql = SqlDataProvider<
                 DatabaseVendor = Common.DatabaseProviderTypes.MSSQLSERVER, 
                 // ContextSchemaPath = mySchemaPath, // file created the 1st time you build the proj with the schema path
@@ -81,9 +83,13 @@ module SqlDB =
             join n_rec in (!!) context.OilPhysical.EndurNominationValid on
                      ((t.DealNumber,t.ParcelGroupId,t.ParcelId) 
                      = (n_rec.ReceiptDealNumber,n_rec.ReceiptParcelGroup,n_rec.ReceiptParcelId))
+            join id_cost in (!!) context.OilPhysical.EndurProfitCenter on 
+                    (t.CostCenterId = id_cost.InternalId)
+            join id_profit in (!!) context.OilPhysical.EndurProfitCenter on 
+                    (t.ProfitCenterId = id_profit.InternalId)
             where (t.BookingCompanyShortName = book)
             take 90
-            select (t,n_del.CargoId, n_rec.CargoId)  
+            select (t,n_del.CargoId, n_rec.CargoId, id_cost.EndurId, id_profit.EndurId)  
             }
         | IntSel i -> 
             query {
@@ -94,9 +100,13 @@ module SqlDB =
             join n_rec in (!!) context.OilPhysical.EndurNominationValid on
                      ((t.DealNumber,t.ParcelGroupId,t.ParcelId) 
                      = (n_rec.ReceiptDealNumber,n_rec.ReceiptParcelGroup,n_rec.ReceiptParcelId))
+            join id_cost in (!!) context.OilPhysical.EndurProfitCenter on 
+                    (t.CostCenterId = id_cost.InternalId)
+            join id_profit in (!!) context.OilPhysical.EndurProfitCenter on 
+                    (t.ProfitCenterId = id_profit.InternalId)
             where (t.BookingCompanyShortName = book && (t.DealNumber = i || n_del.CargoId = i || n_rec.CargoId = i || t.ExternalLegalEntityId = (string i)))
             take 90
-            select (t,n_del.CargoId, n_rec.CargoId)  
+            select (t,n_del.CargoId, n_rec.CargoId, id_cost.EndurId, id_profit.EndurId)  
             }
     
     let nominationsQuery (book:string) (sel: ParsedTrade) =
@@ -194,6 +204,11 @@ module SqlDB =
         }
     #endif
 
+    let ofBookCompany (book:string) (username:string)  =
+        query {
+            for a in analystsTable do
+            exists (a.BookCompany = book && a.UserName = username)
+        }
 
     type Analyst = { UserName: string; Name:string; Surname: string}
     let analystsQuery (book:string) =
@@ -237,6 +252,20 @@ module SqlDB =
         | None -> ()
     
     type DBTable = (string * obj) array array
+    type SqlHoverCell = { Hover: string; Base: string}
+    let addHover (key:string) (value:string) (cols: seq<string * obj>) =
+        cols
+        |> Seq.map (fun (k, v) ->
+            if k = key then
+                ( key, 
+                    { Base = 
+                        cols
+                        |> Seq.tryFind (fun (k, _) -> k = key)
+                        |> Option.fold (fun _ (_,v) -> string v ) ""; 
+                      Hover = value } :> obj)
+            else (k, v)
+        )
+
     type DB() =
         member x.trades (sel: ParsedTrade) (book: string) : Async<DBTable> = async {
         #if OFFLINE
@@ -245,8 +274,12 @@ module SqlDB =
         #else
             let! queryRes = tradesQuery book sel |> Array.executeQueryAsync 
             return queryRes
-            |> Array.map(fun (t,n_del,n_rec) -> 
+            |> Array.map(fun (t,n_del,n_rec, cost, profit) -> 
                 t.ColumnValues
+                |> Seq.filter (fun (k,_) -> 
+                    k.Contains("].[") |> not)
+                |> addHover "CostCenterID" cost
+                |> addHover "ProfitCenterID" profit
                 |> Seq.append ([("Del Cargo ID", n_del :> obj)] 
                 |> Seq.append [("Rec Cargo ID", n_rec :> obj)] ) 
                 |> Seq.toArray)
@@ -269,7 +302,7 @@ module SqlDB =
         member x.costs  (sel: ParsedTrade) (book: string) : Async<DBTable> = async {
         #if OFFLINE
             printfn "only ONLINE, no offline table at the moment"
-            return [||]
+            [||]
         #else
             let! queryRes = costsQuery book sel |> Array.executeQueryAsync  
             return queryRes
@@ -304,6 +337,7 @@ module SqlDB =
         member x.analystDelete (book:string) (analyst:Analyst) =
             analystDelete book analyst
 
+        member x.userIdOfBookCompany = ofBookCompany
 
         member x.cache() =
             #if COMPILED 

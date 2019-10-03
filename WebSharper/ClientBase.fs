@@ -73,6 +73,8 @@ module ClientBase =
     let initAsofFrom = now.Format("DD/MM/YYYY")
     let initAsofTo = now.Format("DD/MM/YYYY")
     let initDateFrom = now.Add(-14,"d").Format("DD/MM/YYYY")
+    let cptyFreqTradeAfter = Moment().Add(-1,"months").Format("DD/MM/YYYY")
+    let cptyFreqTradeBefore = Moment().Format("DD/MM/YYYY")
     let emptyAlertSel =  { book = ""; codes = [||]; status = ""; 
         dateFrom = initDateFrom; dateTo = initDateTo; analyst = ""; alertKey = ""; showClosed = false}
     let alertSelVar = Var.Create emptyAlertSel // for alert jtable select changed

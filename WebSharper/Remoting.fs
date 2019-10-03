@@ -47,9 +47,12 @@ module Server =
             ""
     
     let GetAuthUsername() = 
-        if (HttpContext.Current.Session.["ReportingApp_UserSession"] = null) then
-            HttpContext.Current.Session.["ReportingApp_UserSession"] <- CheckAuthentication()
-        string HttpContext.Current.Session.["ReportingApp_UserSession"]
+        if (HttpContext.Current.Session = null) then 
+            CheckAuthentication()
+        else 
+            if (HttpContext.Current.Session.["ReportingApp_UserSession"] = null) then
+                HttpContext.Current.Session.["ReportingApp_UserSession"] <- CheckAuthentication()
+            string HttpContext.Current.Session.["ReportingApp_UserSession"]
 
     let GetCurrentUser() = 
         match ConfigurationManager.AppSettings.["Mode"] with
@@ -224,8 +227,22 @@ module Server =
 
             
     let extractTrades (db:DB) sel book = async { 
-        let! queryRes = db.trades sel book
+        let! querySqlRes = db.trades sel book
+        let queryRes =
+            querySqlRes
+            |> Array.map(fun colValues -> 
+                colValues
+                |> Array.map(fun (k,v) -> 
+                    match v with
+                    | :? SqlHoverCell as sh ->
+                        let h : ServerModel.HoverCell = 
+                            {Hover = sh.Hover; Base = sh.Base}
+                        (k, h :> obj)
+                    | _ -> (k,v)
+                )
+            )
         return Result.Ok queryRes 
+            
     }
     let extractNominations (db:DB) sel book = async {  
         let! queryRes = db.nominations sel book

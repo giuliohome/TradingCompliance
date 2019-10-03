@@ -350,13 +350,23 @@ module Client =
     
     let tableWithInspector table_name html = Doc.Concat [
             div [] [Inspector table_name];
-            table [ attr.``class`` "table"; 
+            table [ attr.``class`` "table striped table-border mt-4"; 
                     attr.``data-`` "role" "table"; 
                     attr.``data-`` "horizontal-scroll" "true"; 
                     attr.id table_name] 
                   html
             ]
     
+    let convertObj (x:obj) =
+        match x with
+        | :? ServerModel.HoverCell as c -> 
+            div [attr.``class`` "containerT"] [
+                p [attr.``class`` "special_parT cell_parT"] [text c.Base]
+                div [attr.``class`` "overlayT cell_parT"] [
+                    div [attr.``class`` "textT"] [ text c.Hover ]] ]
+        | x -> text <| string x
+
+
     let buildTableHtml 
         (resp: DBResponse<'a>) 
         (itemsFromResp: 'a -> (string * obj) array array)  
@@ -382,7 +392,7 @@ module Client =
                                     for tup in itemsDB do
                                         yield tr [] [
                                             for (k,v) in tup do
-                                                yield td [] [text <| string v]
+                                                yield td [] [convertObj v]
                                         ] ]
                             ]
                          )
@@ -718,7 +728,7 @@ module Client =
                 )
         ]
     type ImportSelection = {mutable book: string; mutable fromAsOf: string; mutable toAsOf: string; }
-    let importSel = {book = ""; fromAsOf = ""; toAsOf = ""; }
+    let importSel = {book = ""; fromAsOf = initAsofFrom; toAsOf = initAsofTo; }
     let AsofFrom_Changed value =  
         importSel.fromAsOf <- value
     let AsofTo_Changed value = 

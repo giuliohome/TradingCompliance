@@ -10,6 +10,31 @@ open System
 
 // Define your library scripting code here
 
+// specific test case for table cells with hover
+try 
+    async {
+        let db = DB()
+        let! check = db.trades (IntSel 1592194) "COMPANY1 - LE"
+        printfn "%A" (check |> Array.head)
+    } |> Async.StartImmediate
+with
+ | exc ->
+     printfn "Error %s " (exc.ToString())
+
+
+// specific test case for bookcompany authorization
+try 
+    let db = DB()
+    let check = db.userIdOfBookCompany "COMPANY2 INC - LE" "user1"
+    printfn "auth result for ets inc: %b" check
+    let check = db.userIdOfBookCompany "COMPANY1 - LE" "user1"
+    printfn "auth result for ets spa: %b" check
+
+with
+ | exc ->
+     printfn "Error %s " (exc.ToString())
+
+
 // specific test case for https://github.com/giuliohome/TradingCompliance/issues/5
 // sql lib not retrieving all the correct records for a specific cargo id?
 async {
@@ -30,7 +55,7 @@ async {
          printfn "Error %s " (exc.ToString())
 } |> Async.StartImmediate
 
-
+// complete test case
 async {
 try 
     let book = "ENI - LE"

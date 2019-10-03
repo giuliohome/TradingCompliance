@@ -12,8 +12,12 @@ open SqlLib
 open SqlDB
 open Server
 
+type OverlayStyle() =
+    inherit Resources.BaseResource("MyScripts", "overlay_hover.css") 
+
 type MetroStyle() =
     inherit Resources.BaseResource("MyScripts", "metro-4.2.48/css/metro-all.min.css") 
+    //"https://cdn.metroui.org.ua", "v4.2.47/css/metro-all.min.css") //"MyScripts", "metro/metro-all.min.css") 
 
 [<Require(typeof<JQuery.Resources.JQuery>)>]
 type MasterScript() =
@@ -42,7 +46,8 @@ type PivotStyle() =
 
 [<Require(typeof<JQuery.Resources.JQuery>)>]
 type MetroScript() =
-    inherit Resources.BaseResource("MyScripts", "metro-4.2.48/js/metro.min.js") 
+    inherit Resources.BaseResource("MyScripts", "metro-4.2.48/js/metro.min.js")
+        //"https://cdn.metroui.org.ua", "v4.2.47/js/metro.min.js") //"MyScripts", "metro/metro.min.js") // "MyScripts/metro.js"  
 
 type JTableStyle() =
     inherit Resources.BaseResource("Scripts",
@@ -50,7 +55,7 @@ type JTableStyle() =
 
 type JQueryUIStyle() =
     inherit Resources.BaseResource("Scripts",
-        "jquery-ui-1.12.1/jquery-ui.min.css") 
+        "jquery-ui-1.12.1/jquery-ui.min.css") //  jqueryui/themes/base/minified/
 
 type ChosenStyle() =
     inherit Resources.BaseResource("MyScripts",
@@ -59,7 +64,7 @@ type ChosenStyle() =
 [<Require(typeof<JQuery.Resources.JQuery>)>]
 type JQueryUIScript() =
     inherit Resources.BaseResource("Scripts",
-        "jquery-ui-1.12.1/jquery-ui.js") 
+        "jquery-ui-1.12.1/jquery-ui.js") //"jquery-ui-1.12.1.min.js jquery-ui-1.10.4/ui/minified/jquery-ui.min.js"
 
 [<Require(typeof<JQueryUIScript>)>]
 type JTableScript() =
@@ -144,6 +149,7 @@ module Templating =
     let Tss (ctx:Context<EndPoint>) (title: string) (body: Doc list) (company: Doc) =
         Content.Page(
             TssTemplate() 
+                //.MyApp("/reporting_oil_fsharp")
                 .Title(title)
                 .HeaderColor("background-color: " + ConfigurationManager.AppSettings.["HeaderColor"])
                 .EnvMode("TSS Reporting " + ConfigurationManager.AppSettings.["Mode"])
@@ -164,16 +170,26 @@ module Site =
     open WebSharper.UI.Html
     open ServerModel
 
-    
-    let bookCo = ServerModel.EtsInc
+    let getUserName () =
+        let currentUser = GetCurrentUser ()
+        let currentUserName = (currentUser.Split('\\') |> Array.last).ToLower()
+        currentUserName
+
+    let db = new DB()
+    let bookCo () = 
+        let userID = getUserName()
+        if (db.userIdOfBookCompany Import2TSS.Counterparty.ETS userID) then
+            ServerModel.EtsSpA
+        else 
+            ServerModel.EtsInc
     
     let SelectCompany = 
-        let bookCo = bookCo //  the client quotation can only contain either JavaScript globals or local variables
+        let bookCo = bookCo() //  the client quotation can only contain either JavaScript globals or local variables
         div [][ client <@ Client.SelectCompany bookCo @>] 
             
 
     let AlertsPage ctx =
-        let bookCo = bookCo //  the client quotation can only contain either JavaScript globals or local variables
+        let bookCo = bookCo()  //  the client quotation can only contain either JavaScript globals or local variables
         let codes =
             Enum.GetValues(typedefof<Alerting.AlertCodes>)
             |> Seq.cast<Alerting.AlertCodes>
@@ -193,7 +209,7 @@ module Site =
         ] SelectCompany
 
     let AdminPage ctx =
-        let bookCo = bookCo
+        let bookCo = bookCo() 
         Templating.Tss ctx "Oil Admin" [
             Doc.WebControl (new Web.Require<DataTableStyle>())
             div [] [client <@ Client.RetrieveAnalysts bookCo  @>]
@@ -201,7 +217,7 @@ module Site =
          ] SelectCompany
      
     let LogPage ctx =
-        let bookCo = bookCo
+        let bookCo = bookCo() 
         Templating.Tss ctx "Oil Log" [
             Doc.WebControl(new Web.Require<JQueryUIStyle>())
             Doc.WebControl(new Web.Require<JQueryUIScript>())
@@ -212,7 +228,7 @@ module Site =
          ] SelectCompany
          
     let PivotPage (ctx:Context<EndPoint>) =
-        let bookCo = bookCo
+        let bookCo = bookCo() 
         Templating.Tss ctx "Alert Pivot" [
             Doc.WebControl(new Web.Require<JQueryUIStyle>())
             Doc.WebControl (new Web.Require<PivotStyle>())
@@ -237,7 +253,7 @@ module Site =
 
     let TablePage ctx =
         let sel_cargo_id : string = string HttpContext.Current.Request.Form.["sel_cargo_id"]
-        let bookCo = bookCo //  the client quotation can only contain either JavaScript globals or local variables
+        let bookCo = bookCo()  //  the client quotation can only contain either JavaScript globals or local variables
         let checked_cargo_id = 
             match sel_cargo_id with
             | Server.Valid sel-> sel
@@ -245,6 +261,7 @@ module Site =
 
         Templating.Tss ctx "Oil Data" [
             Doc.WebControl (new Web.Require<MetroStyle>())
+            Doc.WebControl (new Web.Require<OverlayStyle>())
             div [] [client <@ Client.RetrieveTrades checked_cargo_id bookCo @>]
             Doc.WebControl (new Web.Require<MasterScript>())
             Doc.WebControl (new Web.Require<MetroScript>())
@@ -263,8 +280,7 @@ module Site =
             | EndPoint.Log -> LogPage ctx
             | EndPoint.Pivot -> PivotPage ctx
             | EndPoint.Download -> 
-                let currentUser = GetCurrentUser ()
-                let currentUserName = (currentUser.Split('\\') |> Array.last).ToLower()
+                let currentUserName = getUserName()
                 let fileName = String.Format(@"Excel/OilReport_{0}.xlsx", currentUserName)
                 Content.File(fileName, ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 |> Content.WithHeader "Content-Disposition" (sprintf "attachment; filename=%s" fileName)

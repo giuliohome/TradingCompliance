@@ -14,10 +14,7 @@ module ServerModel =
         static member OilReadETS = "OilReadETS"
         static member OilWriteETS = "OilWriteETS"
 
-
-
     let AppDB = "TSS_DB"
-    
 
     
     [<JavaScript>]
@@ -32,4 +29,7 @@ module ServerModel =
         | _ -> ""
 
 
-  
+    [<JavaScript>]
+    [<Prototype>]
+    type HoverCell = { Hover: string; Base: string}
+    
