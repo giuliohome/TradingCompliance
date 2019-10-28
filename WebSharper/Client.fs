@@ -555,6 +555,7 @@ module Client =
         async {
             let data = sel2jtable sel
             let! alertPage = Server.GetOilAlertsAsync (data.bookcompany, data.user, data.code, data.status, data.key, data.closed, data.dateFrom, data.dateTo, 0, 10000, "AlertKey ASC,CreationDate ASC,AlertCode ASC") 
+            updateAssignedBadges alertPage.AssignedAlerts
             let alerts = alertPage.Records |> Array.map Json.Deserialize
             JSPivot alerts
         } |> Async.StartImmediate
@@ -916,6 +917,10 @@ module Client =
     
     let SetInitSession (bookCo:string) (el:Dom.Element) =
         SetInitBookCo bookCo 
+        async {
+            let! assigned2me = Server.GetAssignedAlerts()
+            updateAssignedBadges assigned2me
+        } |> Async.StartImmediate
     
     let SelectCompany (bookCo:string) =
         Console.Log("Select Company book from server: " + bookCo)

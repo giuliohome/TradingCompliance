@@ -31,6 +31,7 @@ module ARecs =
     let GetItemsAsync (data: Server.JTableData, param: JTableParams) = 
         async {
             let! alertPage = Server.GetOilAlertsAsync (data.bookcompany, data.user, data.code, data.status, data.key, data.closed, data.dateFrom, data.dateTo, param.jtStartIndex, param.jtPageSize, param.jtSorting) 
+            updateAssignedBadges alertPage.AssignedAlerts
             return {| Message = alertPage.Message; Records = alertPage.Records |> Array.map addHiddenKey ; Result = alertPage.Result; TotalRecordCount = alertPage.TotalRecordCount |}
         }
         |> DeferredOfAsync
@@ -40,6 +41,15 @@ module ARecs =
             Console.Log("GetOilAuditAsync")
             Console.Log(data)
             let! auditPage = Server.GetOilAuditAsync (data.alertCode, data.alertKey, data.bookCo, param.jtStartIndex, param.jtPageSize)  
+            updateAssignedBadges auditPage.AssignedAlerts
+            if (auditPage.TotalRecordCount > 0) then 
+                let auditTable = JQuery.Of("#AuditTable")
+                let animationName = "bounceInDown"
+                auditTable.AddClass( animationName + " animated" ).Ignore
+                auditTable.On("animationend", fun el ev ->
+                    auditTable.RemoveClass( animationName + " animated" ).Ignore
+                    auditTable.Off("animationend").Ignore
+                ).Ignore
             return 
                 {| 
                     Message = auditPage.Message; 
@@ -126,7 +136,7 @@ module ARecs =
                 bookCo = detail.bookCo;
             |}
         )
-
+        
     
     let AlertUpdate (queryString: string) : Async<UpdateResponse> = 
         async {

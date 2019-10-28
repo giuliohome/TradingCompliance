@@ -251,6 +251,132 @@ module SqlDB =
             context.SubmitUpdates()
         | None -> ()
     
+    let findAssignedAlerts (username:string) =
+        async {
+            let countAssigned = 
+                query {
+                    for a in context.OilPhysical.Alert do
+                    where (a.AssignedTo = username && a.Status = Alerting.Assigned)
+                    
+                }
+            return! countAssigned |> Seq.lengthAsync
+        }
+
+    let manualAlertUpdate (bookingComp: string) 
+        (oldKey: string) (oldCode: string) 
+        (newKey: string) (newCode: string) : Async<Result<string, string>> =
+        async {
+            if (not(oldCode.StartsWith("M")) || not(newCode.StartsWith("M"))) then
+                return Error "you can update only Manual alert keys"
+            else if (oldKey = newKey && oldCode = newCode) then
+                return Error "nothing to update"
+            else
+                let existsNewAudit = query {
+                    for a in context.OilPhysical.AuditAlert do
+                    where (
+                        a.BookCompany = bookingComp &&
+                        a.AlertCode = newCode &&
+                        a.AlertKey = newKey
+                    ) 
+                    select a
+                }
+                let! existsNewAudMaybe = existsNewAudit |> Seq.tryHeadAsync
+                match existsNewAudMaybe with
+                | Some newaud -> return Error ("Already exists the new key audit asof " + newaud.TransactionDate.ToShortDateString())
+                | None ->
+                    let existsNewAlert = query {
+                        for a in context.OilPhysical.Alert do
+                        where (
+                            a.BookCompany = bookingComp &&
+                            a.AlertCode = newCode &&
+                            a.AlertKey = newKey
+                        ) 
+                        select (Some a)
+                        exactlyOneOrDefault
+                    }
+                    match existsNewAlert with
+                    | Some newAlert ->
+                        return Error ("Already exists the new alert: " + newCode + "-" + newKey)
+                    | None ->
+                        let alertFoundMaybe = query {
+                            for a in context.OilPhysical.Alert do
+                            where (
+                                a.BookCompany = bookingComp &&
+                                a.AlertCode = oldCode &&
+                                a.AlertKey = oldKey
+                            )
+                            select (Some a)
+                            exactlyOneOrDefault
+                        }
+                        match alertFoundMaybe with
+                        | None ->
+                            return Error ("old keys not found: " + oldCode + "-" + oldKey)
+                        | Some oldAlert -> 
+                            let updatedAlert = 
+                                context.OilPhysical.Alert.Create(
+                                    oldAlert.ColumnValues
+                                    |> Seq.map(fun (k,v) ->
+                                        match k with
+                                        | "AlertCode" -> (k, newCode :> obj)
+                                        | "AlertKey" -> (k, newKey :> obj)
+                                        | _ ->(k, if v = null then (DBNull.Value :> obj) else v)
+                                    )
+                                )
+                            do! context.SubmitUpdatesAsync()
+                            let! existsOldAudit = 
+                                query {
+                                    for a in context.OilPhysical.AuditAlert do
+                                    where (
+                                        a.BookCompany = bookingComp &&
+                                        a.AlertCode = oldCode &&
+                                        a.AlertKey = oldKey
+                                    ) 
+                                    select a
+                                } |> Array.executeQueryAsync
+                            let audNum = existsOldAudit |> Array.length
+                            let mutable loop_err = ""
+                            let mutable loop_ok = ""
+                            for oldAuditRec in existsOldAudit do
+                                loop_ok <- loop_ok + "looping;"
+                                let newAudRec = 
+                                    context.OilPhysical.AuditAlert.Create(
+                                        oldAuditRec.ColumnValues
+                                        |> Seq.map(fun (k,v) ->
+                                            match k with
+                                            | "AlertCode" -> (k, newCode :> obj)
+                                            | "AlertKey" -> (k, newKey :> obj)
+                                            | _ ->(k, if v = null then (DBNull.Value :> obj) else v)
+                                        )
+                                    )
+                                let curr_ok = newAudRec.AlertKey + "-" + newAudRec.AlertKey
+                                let! upd = 
+                                    context.SubmitUpdatesAsync()
+                                    |> Async.Catch 
+                                    |> fun x -> async {
+                                        match! x with
+                                        | Choice1Of2 _  -> return Ok ""
+                                        | Choice2Of2 exc ->
+                                            return Error exc.Message
+                                        }
+                                match upd with
+                                | Ok _ ->
+                                    oldAuditRec.Delete()
+                                    do! context.SubmitUpdatesAsync()
+                                    loop_ok <- loop_ok + curr_ok + ";"
+                                | Error err ->
+                                    loop_err <- loop_err + err + ";"
+                                    
+                            
+                            oldAlert.Delete()
+                            do! context.SubmitUpdatesAsync()
+                            return Ok ("updated from " + oldCode + "-" + oldKey 
+                                + " to " + newCode + "-" + newKey
+                                + " with " + (string audNum) + " audit" 
+                                + if loop_err = "" then  " ok: " + loop_ok else " error: " + loop_err)
+        }
+            
+        
+
     type DBTable = (string * obj) array array
     type SqlHoverCell = { Hover: string; Base: string}
     let addHover (key:string) (value:string) (cols: seq<string * obj>) =
@@ -267,6 +393,14 @@ module SqlDB =
         )
 
     type DB() =
+        member x.findAssignedAlerts (username:string) = 
+            findAssignedAlerts username
+
+        member x.manualAlertUpdate (bookingComp: string) 
+            (oldKey: string) (oldCode: string) 
+            (newKey: string) (newCode: string) = 
+            manualAlertUpdate bookingComp oldKey oldCode newKey newCode
+
         member x.trades (sel: ParsedTrade) (book: string) : Async<DBTable> = async {
         #if OFFLINE
             printfn "only ONLINE, no offline table at the moment"

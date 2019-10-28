@@ -12,6 +12,9 @@ open SqlLib
 open SqlDB
 open Server
 
+type AnimateStyle() =
+    inherit Resources.BaseResource("MyScripts", "animate.min.css")
+
 type OverlayStyle() =
     inherit Resources.BaseResource("MyScripts", "overlay_hover.css") 
 
@@ -146,7 +149,7 @@ module Templating =
 
 
 
-    let Tss (ctx:Context<EndPoint>) (title: string) (body: Doc list) (company: Doc) =
+    let Tss (ctx:Context<EndPoint>) (title: string) (body: Doc list) (badge: Doc) (company: Doc) =
         Content.Page(
             TssTemplate() 
                 //.MyApp("/reporting_oil_fsharp")
@@ -154,6 +157,7 @@ module Templating =
                 .HeaderColor("background-color: " + ConfigurationManager.AppSettings.["HeaderColor"])
                 .EnvMode("TSS Reporting " + ConfigurationManager.AppSettings.["Mode"])
                 .UserTag(" - " + GetCurrentUser())
+                .Badge(badge)
                 .BookCo(company)
                 .Body(body)
                 .Doc()
@@ -186,7 +190,9 @@ module Site =
     let SelectCompany = 
         let bookCo = bookCo() //  the client quotation can only contain either JavaScript globals or local variables
         div [][ client <@ Client.SelectCompany bookCo @>] 
-            
+    
+    let ShowBadges =
+        client <@ ClientBase.ShowAssignedBadges() @>
 
     let AlertsPage ctx =
         let bookCo = bookCo()  //  the client quotation can only contain either JavaScript globals or local variables
@@ -198,6 +204,7 @@ module Site =
         let statuses =
             Alerting.AlertStatuses
         Templating.Tss ctx "Oil Alerts" [
+            Doc.WebControl(new Web.Require<AnimateStyle>())
             Doc.WebControl(new Web.Require<JQueryUIStyle>())
             Doc.WebControl(new Web.Require<JTableStyle>())
             Doc.WebControl(new Web.Require<ChosenStyle>())
@@ -206,7 +213,7 @@ module Site =
             Doc.WebControl(new Web.Require<ChosenScript>())
             client <@ Client.ResponsiveAlerts bookCo codes statuses @>
             Doc.WebControl (new Web.Require<MasterScript>())
-        ] SelectCompany
+        ] ShowBadges SelectCompany
 
     let AdminPage ctx =
         let bookCo = bookCo() 
@@ -214,7 +221,7 @@ module Site =
             Doc.WebControl (new Web.Require<DataTableStyle>())
             div [] [client <@ Client.RetrieveAnalysts bookCo  @>]
             Doc.WebControl (new Web.Require<DataTableScript>())
-         ] SelectCompany
+         ] ShowBadges SelectCompany
      
     let LogPage ctx =
         let bookCo = bookCo() 
@@ -225,7 +232,7 @@ module Site =
             h2 [] [text "Oil Log"]
             div [] [client <@ Client.RetrieveLogs bookCo  @>]
             Doc.WebControl (new Web.Require<DataTableScript>())
-         ] SelectCompany
+         ] ShowBadges SelectCompany
          
     let PivotPage (ctx:Context<EndPoint>) =
         let bookCo = bookCo() 
@@ -235,7 +242,7 @@ module Site =
             div [] [client <@ Client.RetrievePivot bookCo @>]
             Doc.WebControl (new Web.Require<RenderersScript>())
             Doc.WebControl (new Web.Require<MasterScript>())
-         ] SelectCompany
+         ] ShowBadges SelectCompany
 
     let HomePage (ctx:Context<EndPoint>) =
         let  table_url = ctx.Link EndPoint.Table
@@ -265,7 +272,7 @@ module Site =
             div [] [client <@ Client.RetrieveTrades checked_cargo_id bookCo @>]
             Doc.WebControl (new Web.Require<MasterScript>())
             Doc.WebControl (new Web.Require<MetroScript>())
-        ] SelectCompany
+        ] ShowBadges SelectCompany
 
     [<Website>]
     let Main =

@@ -36,7 +36,7 @@ module Server =
 
     
     [<JavaScript>]
-    type JTableResult = {Message : string ; Records : string[] ; Result : string ; TotalRecordCount : int} //{|AlertCode : string ; AlertKey : string |}
+    type JTableResult = {Message : string ; Records : string[] ; Result : string ; TotalRecordCount : int; AssignedAlerts: int} //{|AlertCode : string ; AlertKey : string |}
     
     let SessionBookCo = "BookCo"
 
@@ -80,22 +80,35 @@ module Server =
                     let currentUser = GetCurrentUser ()
                     let! authorized = Alerting.CheckPermission(ServerModel.AppDB, currentUser, ServerModel.Permission.OilReadETS, bookCoSrv) |> Async.AwaitTask
                     if (not authorized) then
-                        return { Result = "ERROR"; Message = "Sorry you are not authorized to read BookCo: " + bookcompany; Records = [||];  TotalRecordCount = 0; } else
+                        return { Result = "ERROR"; Message = "Sorry you are not authorized to read BookCo: " + bookcompany; Records = [||];  TotalRecordCount = 0; AssignedAlerts = 0; } else
                     match bookCoSrv with
                     | str when str = "" -> 
-                        return { Result = "ERROR"; Message = "Can't find BookCo: " + bookCoSrv; Records = [||];  TotalRecordCount = 0; }
+                        return { Result = "ERROR"; Message = "Can't find BookCo: " + bookCoSrv; Records = [||];  TotalRecordCount = 0; AssignedAlerts = 0; }
                     | bookCoSrv  ->
                         let! alertPage  = 
                             Async.AwaitTask (Alerting.GetOilAlertsAsync(ServerModel.AppDB, user, code, bookCoSrv, status, key, closed, dateFromStr, dateToStr,jtStartIndex, jtPageSize, jtSorting))
+                        let db = new DB()
+                        let! assigned = db.findAssignedAlerts currentUser
                         return { Result = "OK"; Message = null; 
                                     Records = alertPage.Alerts |> Array.map JsonConvert.SerializeObject 
-                                    ; TotalRecordCount = alertPage.Total; }
+                                    ; TotalRecordCount = alertPage.Total; AssignedAlerts = assigned; }
                 with
                 | exc -> 
                     System.Diagnostics.Debug.WriteLine (exc.ToString())
-                    return { Result = "ERROR"; Message = exc.Message; Records = [||];  TotalRecordCount = 0; }
+                    return { Result = "ERROR"; Message = exc.Message; Records = [||];  TotalRecordCount = 0; AssignedAlerts = 0; }
             }
 
+    [<Rpc>]
+    let GetAssignedAlerts() : Async<int> = 
+        async {
+            try 
+                let currentUser = GetCurrentUser ()
+                let db = new DB()
+                return! db.findAssignedAlerts currentUser
+            with
+            | _ -> return 0
+        }
+    
     [<Rpc>]
     let GetOilAuditAsync (alertCode: string, alertKey: string, bookCo: string, jtStartIndex: int, jtPageSize: int) : Async<JTableResult> = 
         async {
@@ -104,13 +117,15 @@ module Server =
                 let currentUser = GetCurrentUser ()
                 let! authorized = Alerting.CheckPermission(ServerModel.AppDB, currentUser, ServerModel.Permission.OilReadETS, bookCoSrv) |> Async.AwaitTask
                 if (not authorized) then
-                    return { Result = "ERROR"; Message = "Sorry you are not authorized to read BookCo: " + bookCo; Records = [||];  TotalRecordCount = 0; } else
+                    return { Result = "ERROR"; Message = "Sorry you are not authorized to read BookCo: " + bookCo; Records = [||];  TotalRecordCount = 0; AssignedAlerts = 0; } else
                 let! auditPage = Alerting.GetOilChangesAsync( ServerModel.AppDB, alertCode, alertKey, bookCoSrv, jtStartIndex, jtPageSize) |> Async.AwaitTask
+                let db = new DB()
+                let! assigned = db.findAssignedAlerts currentUser
                 return { Result = "OK"; Message = null; 
                                     Records = auditPage.Changes |> Array.map JsonConvert.SerializeObject 
-                                    ; TotalRecordCount = auditPage.Total; }
+                                    ; TotalRecordCount = auditPage.Total; AssignedAlerts = assigned; }
             with 
-            | exc -> return { Result = "ERROR"; Message = "GetOilAuditAsync: " + exc.Message; Records = [||];  TotalRecordCount = 0; }
+            | exc -> return { Result = "ERROR"; Message = "GetOilAuditAsync: " + exc.Message; Records = [||];  TotalRecordCount = 0; AssignedAlerts = 0; }
         }
 
     [<Rpc>]
@@ -404,38 +419,52 @@ module Server =
         if ((not authorized) && (oilAlert.AssignedTo = currentUserName |> not) ) 
             then return { Result = "ERROR"; Message = ("User " + currentUser + " is not authorized to write to assigned '" + oilAlert.AssignedTo + "'");} else
         let currCode = oilAlert.AlertCode
-        oilAlert.AlertCode <- compositeKey.Split('|').[0]
-        let! alertBefore = Alerting.GetLastAlertOf(ServerModel.AppDB, bookingComp, oilAlert) |> Async.AwaitTask
-        oilAlert.AlertCode <- currCode
-        if alertBefore = null // if we update an alert, such alert must exists
-            then return { Result = "ERROR"; Message = "null alertBefore" }; else
-        if ((not authorized) && (alertBefore.AssignedTo = currentUserName |> not) ) 
-            then return { Result = "ERROR"; Message = ("User " + currentUser + " is not authorized to write from assigned '" + alertBefore.AssignedTo + "'");} else
-        if ((not authorized) && (oilAlert.Status = Alerting.Closed) ) 
-            then return { Result = "ERROR"; Message = ("User " + currentUser + " is not authorized to to close alerts");} else
-        if (authorized && not (String.IsNullOrWhiteSpace alertBefore.AssignedTo)  && not (alertBefore.AssignedTo = currentUserName) && not (oilAlert.AssignedTo = currentUserName) ) 
-            then return { Result = "ERROR"; Message = ("Assign the alert to yourself before");} else
-        if (Alerting.EscalatedStatuses |> Array.contains alertBefore.Status && not (Alerting.EscalatedStatuses |> Array.contains oilAlert.Status) ) 
-            then return { Result = "ERROR"; Message = ("The status " + oilAlert.Status + " is not valid after escalation");} else
-        if (Alerting.PostEscalationStatuses |> Array.contains oilAlert.Status && not(Alerting.EscalatedStatuses |> Array.contains alertBefore.Status))
-            then return { Result = "ERROR"; Message = ("The status " + oilAlert.Status + " is not valid before escalation");} else
-        if (Enum.GetValues(typedefof<Alerting.AlertCodes>) 
-            |> Seq.cast<Alerting.AlertCodes> 
-            |> Seq.map (fun c -> c.GetEnumDescription()) 
-            |> Seq.contains ( oilAlert.AlertCode) |> not)
-            then return { Result = "ERROR"; Message = ("The alert code " + oilAlert.AlertCode + " is not valid");} else
-        oilAlert.CreationDate <- alertBefore.CreationDate
-        oilAlert.LastTransactionDate <- alertBefore.LastTransactionDate
-        oilAlert.BookCompany <- alertBefore.BookCompany
-        let result_msg = 
-            "Updating Oil Alert: " + 
-            sprintf "Composite Key: %s - %s %s %s %s %s" compositeKey oilAlert.AlertCode oilAlert.AlertKey oilAlert.BookCompany oilAlert.Commodity oilAlert.Note +  " - " + book
-        try 
-            let saveOK, error = Alerting.UpdateWithAudit((fun _ -> ()) , ServerModel.AppDB, currentUserName, oilAlert)
-            return { Result = (if saveOK then "OK" else "ERROR"); Message = (error + " - " + result_msg);} 
-        with 
-        | exc ->
-            return { Result = "ERROR"; Message = exc.Message };
+        let currKey = oilAlert.AlertKey
+        let oldCode = compositeKey.Split('|').[0]
+        let oldKey =  compositeKey.Split('|').[1]
+        let! manualUpd = async {
+            if (currKey <> oldKey || currCode <> oldCode) then 
+                let db = new DB()
+                return! db.manualAlertUpdate bookingComp oldKey oldCode currKey currCode
+            else 
+                return Result.Ok "" }
+        match manualUpd with
+        | Result.Error err -> return { Result = "ERROR"; Message = err }
+        | Result.Ok _ ->
+            if (oilAlert.AlertCode.StartsWith("M") |> not) then 
+                oilAlert.AlertCode <- oldCode
+                oilAlert.AlertKey <- oldKey
+            let! alertBefore = Alerting.GetLastAlertOf(ServerModel.AppDB, bookingComp, oilAlert) |> Async.AwaitTask
+            oilAlert.AlertCode <- currCode
+            if alertBefore = null // if we update an alert, such alert must exists
+                then return { Result = "ERROR"; Message = "null alertBefore" }; else
+            if ((not authorized) && (alertBefore.AssignedTo = currentUserName |> not) ) 
+                then return { Result = "ERROR"; Message = ("User " + currentUser + " is not authorized to write from assigned '" + alertBefore.AssignedTo + "'");} else
+            if ((not authorized) && (oilAlert.Status = Alerting.Closed) ) 
+                then return { Result = "ERROR"; Message = ("User " + currentUser + " is not authorized to to close alerts");} else
+            if (authorized && not (String.IsNullOrWhiteSpace alertBefore.AssignedTo)  && not (alertBefore.AssignedTo = currentUserName) && not (oilAlert.AssignedTo = currentUserName) ) 
+                then return { Result = "ERROR"; Message = ("Assign the alert to yourself before");} else
+            if (Alerting.EscalatedStatuses |> Array.contains alertBefore.Status && not (Alerting.EscalatedStatuses |> Array.contains oilAlert.Status) ) 
+                then return { Result = "ERROR"; Message = ("The status " + oilAlert.Status + " is not valid after escalation");} else
+            if (Alerting.PostEscalationStatuses |> Array.contains oilAlert.Status && not(Alerting.EscalatedStatuses |> Array.contains alertBefore.Status))
+                then return { Result = "ERROR"; Message = ("The status " + oilAlert.Status + " is not valid before escalation");} else
+            if (Enum.GetValues(typedefof<Alerting.AlertCodes>) 
+                |> Seq.cast<Alerting.AlertCodes> 
+                |> Seq.map (fun c -> c.GetEnumDescription()) 
+                |> Seq.contains ( oilAlert.AlertCode) |> not)
+                then return { Result = "ERROR"; Message = ("The alert code " + oilAlert.AlertCode + " is not valid");} else
+            oilAlert.CreationDate <- alertBefore.CreationDate
+            oilAlert.LastTransactionDate <- alertBefore.LastTransactionDate
+            oilAlert.BookCompany <- alertBefore.BookCompany
+            let result_msg = 
+                "Updating Oil Alert: " + 
+                sprintf "Composite Key: %s - %s %s %s %s %s" compositeKey oilAlert.AlertCode oilAlert.AlertKey oilAlert.BookCompany oilAlert.Commodity oilAlert.Note +  " - " + book
+            try 
+                let saveOK, error = Alerting.UpdateWithAudit((fun _ -> ()) , ServerModel.AppDB, currentUserName, oilAlert)
+                return { Result = (if saveOK then "OK" else "ERROR"); Message = (error + " - " + result_msg);} 
+            with 
+            | exc ->
+                return { Result = "ERROR"; Message = exc.Message };
     }
     
     [<JavaScript>]
@@ -455,7 +484,7 @@ module Server =
         try
             let currentUserName = (currentUser.Split('\\') |> Array.last).ToLower()
             oilAlert.AssignedTo <- currentUserName
-            let! addedAlert = Alerting.CreateManualAlert(ServerModel.AppDB, oilAlert) |> Async.AwaitTask 
+            let! addedAlert = Alerting.CreateManualAlert(ServerModel.AppDB, oilAlert, bookingComp) |> Async.AwaitTask 
             return { Result = "OK"; Record = addedAlert; Message = "Record created" }
         with | exc -> 
             let msg = if exc.InnerException <> null then exc.InnerException.Message else exc.Message

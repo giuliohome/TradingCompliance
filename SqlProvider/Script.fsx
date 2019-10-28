@@ -10,11 +10,114 @@ open System
 
 // Define your library scripting code here
 
+// specific test case for assigned alerts
+try 
+    async {
+        let db = DB()
+        let! assigned2me = db.findAssignedAlerts "userid00"
+        printfn "Assigned to me: %d" assigned2me
+    } |> Async.StartImmediate
+with
+ | exc ->
+     printfn "Error %s " (exc.ToString())
+
+// specific test case for manual alert update
+
+let showRes title = function
+    | Ok msg -> printfn "*** Result %s: ok %s ***" title msg
+    | Error err -> printfn "*** Error %s: ko %s ***" title err
+
+try 
+    async {
+        let db = DB()
+        
+        //let! check = 
+        //    db.manualAlertUpdate 
+        //        "Company - LE" 
+        //        "101" "M01 Manual" 
+        //        "102" "M03 Market Conformity" 
+        //showRes "test update" check 
+        
+        let! check = 
+            db.manualAlertUpdate 
+                "Company - LE" 
+                "102" "M03 Market Conformity" 
+                "101" "M01 Manual" 
+        showRes "test update" check 
+
+    } |> Async.StartImmediate
+with
+ | exc ->
+     printfn "Error %s " (exc.ToString())
+
+
+
+try 
+    async {
+        let db = DB()
+
+        let! check = 
+            db.manualAlertUpdate 
+                "Company - LE" 
+                "1401618" "A82 Concl after" 
+                "1401618" "A82 Concl after" 
+        showRes "both auto" check 
+
+        let! check = 
+            db.manualAlertUpdate 
+                "Company - LE" 
+                "1401618" "A82 Concl after" 
+                "1401618" "M01 Manual" 
+        showRes "old auto" check 
+        
+        let! check = 
+            db.manualAlertUpdate 
+                "Company - LE" 
+                "1401618" "M01 Manual"  
+                "1401618" "A82 Concl after" 
+        showRes "new auto" check 
+
+    } |> Async.StartImmediate
+with
+ | exc ->
+     printfn "Error %s " (exc.ToString())
+
+try 
+    async {
+        let db = DB()
+
+        let! check = 
+            db.manualAlertUpdate 
+                "Company - LE" 
+                "101" "M01 Manual" 
+                "101" "M01 Manual" 
+        showRes "same keys" check 
+
+        
+        let! check = 
+            db.manualAlertUpdate 
+                "Company - LE" 
+                "100" "M01 Manual" 
+                "101" "M01 Manual" 
+        showRes "new exists" check 
+
+        
+        let! check = 
+            db.manualAlertUpdate 
+                "Company - LE" 
+                "102" "M01 Manual" 
+                "100" "M01 Manual" 
+        showRes "wrong old" check 
+
+    } |> Async.StartImmediate
+with
+ | exc ->
+     printfn "Error %s " (exc.ToString())
 // specific test case for table cells with hover
 try 
     async {
         let db = DB()
-        let! check = db.trades (IntSel 1592194) "COMPANY1 - LE"
+        let! check = db.trades (IntSel 1592194) "Company - LE"
         printfn "%A" (check |> Array.head)
     } |> Async.StartImmediate
 with
@@ -25,9 +128,9 @@ with
 // specific test case for bookcompany authorization
 try 
     let db = DB()
-    let check = db.userIdOfBookCompany "COMPANY2 INC - LE" "user1"
+    let check = db.userIdOfBookCompany "US_Company INC - LE" "userid00"
     printfn "auth result for ets inc: %b" check
-    let check = db.userIdOfBookCompany "COMPANY1 - LE" "user1"
+    let check = db.userIdOfBookCompany "Company - LE" "userid00"
     printfn "auth result for ets spa: %b" check
 
 with
@@ -58,23 +161,23 @@ async {
 // complete test case
 async {
 try 
-    let book = "ENI - LE"
+    let book = "Company - LE"
     let db = DB()
     //only ONLINE, no offline table at the moment
     // you may need  --define:OFFLINE in tools>options>f# tools> f# interactive (restart fsi)
     #if !OFFLINE
     printfn "Test trades"
-    let! trades = db.trades NoSelection "ENI - LE"
+    let! trades = db.trades NoSelection "Company - LE"
     trades
     |> Array.take 10
     |> Array.iter (printfn "%A")
     printfn "Test nominations"
-    let! nominations = db.nominations NoSelection "ENI - LE"
+    let! nominations = db.nominations NoSelection "Company - LE"
     nominations
     |> Array.take 10
     |> Array.iter (printfn "%A")    
     printfn "Test costs"
-    let! costs = db.costs NoSelection "ENI - LE"
+    let! costs = db.costs NoSelection "Company - LE"
     costs
     |> Array.take 10
     |> Array.iter (printfn "%A")
@@ -94,12 +197,12 @@ try
 
     #if !OFFLINE
     Printf.printfn "***** Let's test log import read now ***** "
-    db.logsRead "ENI - LE"
+    db.logsRead "Company - LE"
     |> Array.take 3
     |> Array.iter (printfn "%A")
     #endif
     Printf.printfn "***** Details for on a single log ***** "
-    db.logDetailsRead "ENI - LE" (DateTime(2019,6,27).Date)
+    db.logDetailsRead "Company - LE" (DateTime(2019,6,27).Date)
     |> Array.iter (printfn "%A")
 
     //just one time

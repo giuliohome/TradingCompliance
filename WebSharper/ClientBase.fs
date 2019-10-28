@@ -97,6 +97,41 @@ module ClientBase =
         selectedLogVar.Set sel
         refreshLogs.Trigger()
 
+    let doAnimation (elementId:string) (animationName:string) = 
+        let element = JQuery.Of("#" + elementId)
+        element.AddClass( animationName + " animated" ).Ignore
+        element.On("animationend", fun el ev ->
+            element.RemoveClass( animationName + " animated" ).Ignore
+            element.Off("animationend").Ignore
+        ).Ignore
+
+    type AssignedBadges = NoAssignedBadges | AssignedBadges of int
+    let badgeAssignedVar = Var.Create NoAssignedBadges 
+    let AssignedBadgesHtmlId = "AssignedBadges"
+    let ShowAssignedBadges() : Doc =
+        Doc.BindView 
+            (fun badges -> 
+                match badges with
+                | NoAssignedBadges -> Doc.Empty
+                | AssignedBadges badges -> 
+                span [] [text " "; span [attr.id AssignedBadgesHtmlId; attr.``class`` "badge"; on.afterRender(fun el ->
+                    doAnimation AssignedBadgesHtmlId "bounceInRight"
+                )] [text (string badges)]]
+            ) 
+            badgeAssignedVar.View    
+    
+
+
+    let updateAssignedBadges assigned2me = 
+        async {
+            match badgeAssignedVar.Value with
+            | NoAssignedBadges -> ()
+            | AssignedBadges badges -> 
+                if (assigned2me <> badges && badges > 0) then
+                    doAnimation AssignedBadgesHtmlId "bounceOutLeft"
+            badgeAssignedVar.Set (if assigned2me > 0 then AssignedBadges assigned2me else NoAssignedBadges)
+        } |> Async.StartImmediate
+
     let callUpdateAnalyst book username = 
         async {
             do! Server.UpdateAnalyst book username
@@ -279,17 +314,28 @@ module ClientBase =
                 | _ -> ()
             ).Ignore
         | _ -> 
-            form.Find("input[name=AlertKey]").Prop("readonly",true).Ignore
             let curr_alert_code : string = code_found.Val().ToString()
             Console.Log("update curr_code: ", curr_alert_code)
-            code_found.Empty().Ignore
-            code_found.Append("<option value='" + curr_alert_code + "'>" + curr_alert_code + "</option>").Ignore
-            code_found.Val(curr_alert_code).Ignore
-            Console.Log("code_found", code_found)
             match curr_alert_code.Substring(0,1) with
             | "A" ->
+                form.Find("input[name=AlertKey]").Prop("readonly",true).Ignore
+                code_found.Empty().Ignore
+                code_found.Append("<option value='" + curr_alert_code + "'>" + curr_alert_code + "</option>").Ignore
+                code_found.Val(curr_alert_code).Ignore
+                Console.Log("code_found", code_found)
                 form.Find("input[name=Portfolio]").Prop("readonly",true).Ignore
                 form.Find("input[name=Commodity]").Prop("readonly",true).Ignore
-            | _ -> ()
+            | _ -> 
+                code_found.Empty().Ignore
+                let code_dropdown = JQuery.Of("#AlertCodeSelect option")
+                Console.Log("code_dropdown", code_dropdown)
+                code_dropdown.Each(fun i el -> 
+                    let curr_code : string = el?value
+                    Console.Log("create i: " + i.ToString() + " curr_code: " + curr_code + " el: ", el)
+                    match curr_code.Substring(0,1) with
+                    | "M" ->
+                        code_found.Append("<option value='" + curr_code + "'" + (if curr_code = curr_alert_code then " selected" else "") + ">" + curr_code + "</option>").Ignore
+                    | _ -> ()
+                ).Ignore
         form.Find("textarea[name=Note]").Css("width","550px").Attr("rows","6").Ignore
         form.Find("textarea[name=Outcome]").Css("width","550px").Attr("rows","6").Ignore
