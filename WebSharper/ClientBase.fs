@@ -53,8 +53,12 @@ module ClientBase =
             |> Async.Start
         ))
 
+    let EtsSpA = ServerModel.EtsSpA 
+    let EtsInc =  ServerModel.EtsInc
+    let DropDownList = "MasterBookCo"
+
     let GetBookCo () = async {
-        let sel = JS.Document.GetElementById("MasterBookCo") |> As<HTMLSelectElement>
+        let sel = JS.Document.GetElementById(DropDownList) |> As<HTMLSelectElement>
         let idx = sel?selectedIndex |> As<int>
         let opt = sel.Item(idx) |> As<HTMLOptionElement>
         return opt.Label 

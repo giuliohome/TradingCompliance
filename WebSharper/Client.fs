@@ -188,9 +188,7 @@ module Client =
                     ]) auditSubmit.View
         ]
     
-    let EtsSpA = ServerModel.EtsSpA 
-    let EtsInc =  ServerModel.EtsInc
-    let DropDownList = "MasterBookCo"
+
 
 
 
@@ -895,28 +893,25 @@ module Client =
 
     let SetCompany (el:Dom.Element) (ev:Dom.Event) = 
         async {
-        let sel = JS.Document.GetElementById("MasterBookCo") |> As<HTMLSelectElement>
-        let idx = el?selectedIndex |> As<int>
-        let opt = sel.Item(idx) |> As<HTMLOptionElement>
-        Console.Log(opt.Label)
+        let! optLabel = GetBookCo()
+        Console.Log(optLabel)
         let! before = Server.GetBookCompany()
         Console.Log("before: " + before)
-        let! check_list = Server.SetBookCompany(opt.Label)
+        let! check_list = Server.SetBookCompany(optLabel)
         check_list |> Seq.iter Console.Log
-        let! after = Server.GetBookCompany()
-        Console.Log("after: " + after) 
-        rvInput.Update (fun curr -> {curr with book = after})
+        let! afterSession = Server.GetBookCompany()
+        Console.Log("after: " + afterSession) 
+        rvInput.Update (fun curr -> {curr with book = optLabel})
         submit.Trigger()
-        alertSelVar.Update (fun curr -> {curr with book = after})
+        alertSelVar.Update (fun curr -> {curr with book = optLabel})
         refreshAlerts.Trigger()
-        refreshAnalistView after
-        refreshLogViewFromBook after
+        refreshAnalistView optLabel
+        refreshLogViewFromBook optLabel
         auditInput.Set NoAlertSelection
         auditSubmit.Trigger()
         } |> Async.StartImmediate
     
-    let SetInitSession (bookCo:string) (el:Dom.Element) =
-        SetInitBookCo bookCo 
+    let SetInitSession (el:Dom.Element) =
         async {
             let! assigned2me = Server.GetAssignedAlerts()
             updateAssignedBadges assigned2me
@@ -931,7 +926,7 @@ module Client =
             | _ -> 
                 [attr.id EtsSpA; attr.selected ""], [attr.id EtsInc]
         select [attr.id DropDownList; attr.style "width:auto;font-size:14px;line-height:normal;height:22px"; 
-                on.change SetCompany; on.afterRender <| SetInitSession bookCo] [     
+                on.change SetCompany; on.afterRender SetInitSession] [     
             Tags.option spaIsSel [ text EtsSpA ]; 
             Tags.option incIsSel [ text EtsInc]
         ]

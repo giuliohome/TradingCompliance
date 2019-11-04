@@ -187,8 +187,8 @@ module Site =
         else 
             ServerModel.EtsInc
     
-    let SelectCompany = 
-        let bookCo = bookCo() //  the client quotation can only contain either JavaScript globals or local variables
+    let SelectCompany bookCo = 
+        //let bookCo = bookCo() //  the client quotation can only contain either JavaScript globals or local variables
         div [][ client <@ Client.SelectCompany bookCo @>] 
     
     let ShowBadges =
@@ -213,7 +213,7 @@ module Site =
             Doc.WebControl(new Web.Require<ChosenScript>())
             client <@ Client.ResponsiveAlerts bookCo codes statuses @>
             Doc.WebControl (new Web.Require<MasterScript>())
-        ] ShowBadges SelectCompany
+        ] ShowBadges (SelectCompany bookCo)
 
     let AdminPage ctx =
         let bookCo = bookCo() 
@@ -221,7 +221,7 @@ module Site =
             Doc.WebControl (new Web.Require<DataTableStyle>())
             div [] [client <@ Client.RetrieveAnalysts bookCo  @>]
             Doc.WebControl (new Web.Require<DataTableScript>())
-         ] ShowBadges SelectCompany
+         ] ShowBadges (SelectCompany bookCo)
      
     let LogPage ctx =
         let bookCo = bookCo() 
@@ -232,7 +232,7 @@ module Site =
             h2 [] [text "Oil Log"]
             div [] [client <@ Client.RetrieveLogs bookCo  @>]
             Doc.WebControl (new Web.Require<DataTableScript>())
-         ] ShowBadges SelectCompany
+         ] ShowBadges (SelectCompany bookCo)
          
     let PivotPage (ctx:Context<EndPoint>) =
         let bookCo = bookCo() 
@@ -242,7 +242,7 @@ module Site =
             div [] [client <@ Client.RetrievePivot bookCo @>]
             Doc.WebControl (new Web.Require<RenderersScript>())
             Doc.WebControl (new Web.Require<MasterScript>())
-         ] ShowBadges SelectCompany
+         ] ShowBadges (SelectCompany bookCo)
 
     let HomePage (ctx:Context<EndPoint>) =
         let  table_url = ctx.Link EndPoint.Table
@@ -272,7 +272,7 @@ module Site =
             div [] [client <@ Client.RetrieveTrades checked_cargo_id bookCo @>]
             Doc.WebControl (new Web.Require<MasterScript>())
             Doc.WebControl (new Web.Require<MetroScript>())
-        ] ShowBadges SelectCompany
+        ] ShowBadges (SelectCompany bookCo)
 
     [<Website>]
     let Main =
