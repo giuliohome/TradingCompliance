@@ -189,29 +189,38 @@ module Server =
                 return [ "Server Exception:"; exc.Message ; exc.StackTrace ]
             }
 
-    let ComputePL (bookCo:string) (selection:ParsedTrade) (curr: string) : Async<Result<CostBalance, string>> = async {
-            match selection with
-            | IntSel cargoId ->
-                let balances, msg = Alerting.ComputePLWeb( ServerModel.AppDB, bookCo, cargoId, curr)
-                return 
-                    balances 
-                    |> Seq.tryHead 
-                    |> Option.fold 
-                        (fun _ balance -> Ok balance) 
-                        (Result.Error <| "Cargo id not found: " + cargoId.ToString() + " for " + bookCo)
-            | NoSelection -> 
-                return Result.Error "Select a cargo id to get the PL"
+    let ComputePL (bookCo:string) (entity_type:string) (selection:ParsedTrade) (curr: string) : Async<Result<CostBalance, string>> = async {
+            if entity_type = ServerModel.ByCargo || String.IsNullOrWhiteSpace entity_type then
+                match selection with
+                | IntSel cargoId ->
+                    let balances, msg = Alerting.ComputePLWeb( ServerModel.AppDB, bookCo, cargoId, curr)
+                    let db = new DB()
+                    let! sapMaybe = db.getSapPL cargoId curr
+                    return 
+                        balances 
+                        |> Seq.tryHead 
+                        |> Option.fold 
+                            (fun _ balance -> 
+                                match sapMaybe with
+                                | None -> balance.Portfolio <- ""
+                                | Some sap -> balance.Portfolio <- sap.Amount.ToString("N0")
+                                Ok balance) 
+                            (Result.Error <| "Cargo id not found: " + cargoId.ToString() + " for " + bookCo)
+                | NoSelection -> 
+                    return Result.Error "Select a cargo id to get the PL"
+             else return Result.Error "Select a cargo id to get the PL"
     }
-    let PLComputeUSD (bookCo:string) (input:ParsedTrade) : Async<Result<CostBalance, string>> =
-        ComputePL bookCo input Alerting.USDCurrency
-    let PLComputeEUR (bookCo:string) (input:ParsedTrade) : Async<Result<CostBalance, string>> =
-        ComputePL bookCo input Alerting.EURCurrency
+    let PLComputeUSD (bookCo:string) (entity_type:string) (input:ParsedTrade) : Async<Result<CostBalance, string>> =
+        ComputePL bookCo entity_type input Alerting.USDCurrency
+    let PLComputeEUR (bookCo:string) (entity_type:string) (input:ParsedTrade) : Async<Result<CostBalance, string>> =
+        ComputePL bookCo entity_type input Alerting.EURCurrency
     let convertBalance2Table (b: CostBalance) (note: string option) : (string * obj) array =
         let row = [|
             ("PL Currency", b.Currency :> obj);
             ("Pay Amount", b.PayAmount.ToString("N0") :> obj);
             ("Receive Amount", b.ReceiveAmount.ToString("N0") :> obj);
             ("Margin", b.Margin.ToString("N0") :> obj);
+            ("Sap Margin", b.Portfolio :> obj)
             ("Delivery Relevant", (if (b.DeliveryCount > 0) then "Yes" else "No") :> obj);
             ("Receipt Relevant", (if (b.ReceiveCount > 0) then "Yes" else "No") :> obj);
         |] 
@@ -219,12 +228,12 @@ module Server =
             Array.append r [| ("note", n :> obj)|]
         ) row note
 
-    let ComputeCargoPL (input:ParsedTrade) (bookCo:string) : Async<Result<(string * obj) array array, string>> = async {
+    let ComputeCargoPL (entity_type:string)  (input:ParsedTrade) (bookCo:string) : Async<Result<(string * obj) array array, string>> = async {
     
         let! parallelComputePL =
             [|
-                 PLComputeUSD bookCo input;
-                 PLComputeEUR bookCo input
+                 PLComputeUSD bookCo entity_type input;
+                 PLComputeEUR bookCo entity_type input
             |] |> Async.Parallel
         let usdBalance = parallelComputePL.[0]
         let eurBalance = parallelComputePL.[1]
@@ -241,8 +250,8 @@ module Server =
     }
 
             
-    let extractTrades (db:DB) sel book = async { 
-        let! querySqlRes = db.trades sel book
+    let extractTrades entity_type (db:DB) sel book = async { 
+        let! querySqlRes = db.trades sel entity_type book
         let queryRes =
             querySqlRes
             |> Array.map(fun colValues -> 
@@ -259,12 +268,12 @@ module Server =
         return Result.Ok queryRes 
             
     }
-    let extractNominations (db:DB) sel book = async {  
-        let! queryRes = db.nominations sel book
+    let extractNominations entity_type (db:DB) sel book = async {  
+        let! queryRes = db.nominations sel entity_type book
         return Result.Ok queryRes 
     }
-    let extractCosts (db:DB) sel book = async {  
-        let! queryRes = db.costs sel book
+    let extractCosts entity_type (db:DB) sel book = async {  
+        let! queryRes = db.costs sel entity_type book
         return Result.Ok queryRes 
     }
 
@@ -302,25 +311,25 @@ module Server =
             with e -> return Error (tableDB, e.Message)
         | _ -> return Error (tableDB, "Not a valid " + tableName + " number: " +  input)
         }
-    let RetrieveItemsDB (bookCo:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> =
+    let RetrieveItemsDB (bookCo:string) (entity_type:string) (input:string) (extract) (tableDB: DBTable) (tableName: string) : Async<DBResponse<DBTableResponse>> =
             let db = DB()
-            RetrieveItems bookCo input (extract db) tableDB tableName 
+            RetrieveItems bookCo input (extract entity_type db) tableDB tableName 
             
 
-    let RetrieveTrades (bookCo:string) (input:string) : Async<DBResponse<DBTableResponse>> = 
-        RetrieveItemsDB bookCo input extractTrades EndurTradeValid "trade"
+    let RetrieveTrades (bookCo:string) (entity_type:string) (input:string) : Async<DBResponse<DBTableResponse>> = 
+        RetrieveItemsDB bookCo entity_type input extractTrades EndurTradeValid "trade"
 
-    let RetrieveNominations (bookCo:string) (input:string) : Async<DBResponse<DBTableResponse>> = 
-        RetrieveItemsDB bookCo input extractNominations EndurNominationValid "nomination"
+    let RetrieveNominations (bookCo:string) (entity_type:string) (input:string) : Async<DBResponse<DBTableResponse>> = 
+        RetrieveItemsDB bookCo entity_type input extractNominations EndurNominationValid "nomination"
 
-    let RetrieveCosts (bookCo:string) (input:string) : Async<DBResponse<DBTableResponse>> = 
-        RetrieveItemsDB bookCo input extractCosts EndurCost "cost"
+    let RetrieveCosts (bookCo:string) (entity_type:string) (input:string) : Async<DBResponse<DBTableResponse>> = 
+        RetrieveItemsDB bookCo entity_type input extractCosts EndurCost "cost"
 
-    let RetrievePL (bookCo:string) (input:string) : Async<DBResponse<DBTableResponse>> =
-        RetrieveItems bookCo input ComputeCargoPL CargoPL "P/L"
+    let RetrievePL (bookCo:string) (entity_type:string) (input:string) : Async<DBResponse<DBTableResponse>> =
+        RetrieveItems bookCo input (ComputeCargoPL entity_type) CargoPL "P/L"
         
     [<Rpc>]
-    let RetrieveOilData (bookCo:string) (input:string) : Async<ServerTradeResponse> = async {
+    let RetrieveOilData (bookCo:string) (entity_type:string) (input:string) : Async<ServerTradeResponse> = async {
         let bookCoSrv = ServerModel.getBookCo bookCo
         let currentUser = GetCurrentUser ()
         let! authorized = Alerting.CheckPermission(ServerModel.AppDB, currentUser, ServerModel.Permission.OilReadETS, bookCoSrv) |> Async.AwaitTask
@@ -330,10 +339,10 @@ module Server =
                      costResp =  Error(EndurCost, "Sorry you are not authorized to read costs of BookCo: " + bookCo );
                      plResp =  Error(EndurCost, "Sorry you are not authorized to read PL of BookCo: " + bookCo )} else
         let! oilData =
-            [ RetrieveTrades bookCoSrv input; 
-              RetrieveNominations bookCoSrv input;
-              RetrieveCosts bookCoSrv input; 
-              RetrievePL bookCoSrv input]
+            [ RetrieveTrades bookCoSrv entity_type input; 
+              RetrieveNominations bookCoSrv entity_type input;
+              RetrieveCosts bookCoSrv entity_type input; 
+              RetrievePL bookCoSrv entity_type input]
             |> Async.Parallel
         
         let trades : DBResponse<TradeResponse> =

@@ -5,8 +5,7 @@ open FSharp.Data.Sql
 open System
 open System.Data
 open System.Configuration
-
-open FSharp.Data.Sql.Providers
+open FSharp.Control
 
 module SqlDB =
 
@@ -67,12 +66,30 @@ module SqlDB =
     
     type ExtTrade = {t:TradeValid; n: NominationValid}
 
-    type ParsedTrade = NoSelection | IntSel of int     
+    type ParsedTrade = NoSelection | IntSel of int  
+    [<Literal>]
+    let ByCargo = "ByCargo"
+    [<Literal>]
+    let ByTrade = "ByTrade"
+    [<Literal>]
+    let ByCpty = "ByCpty"
+    [<Literal>]
+    let ByFee = "ByFee"
+    let alertOfType (byType:string) (alert_type:string) =
+        match byType with
+        | x when x = ByTrade -> alert_type = ByTrade
+        | x when x = ByFee -> alert_type = ByFee
+        | x when x = ByCpty -> alert_type = ByCpty
+        | x when x = ByCargo -> alert_type = ByCargo || (String.IsNullOrWhiteSpace alert_type)
+        | _ -> failwith (byType + " is not an alert type")
     #if OFFLINE 
     // TODO: "only ONLINE, no offline table at the moment"
     #else 
-    let tradesQuery (book:string) (sel: ParsedTrade) = 
-        
+    let tradesQuery (book:string) (alert_type:string) (sel: ParsedTrade) = 
+        let isByTrade = alertOfType ByTrade alert_type
+        let isByFee = alertOfType ByFee alert_type
+        let isByCpty = alertOfType ByCpty alert_type
+        let isByCargo = alertOfType ByCargo alert_type
         match sel with
         | NoSelection -> 
             query {
@@ -104,12 +121,20 @@ module SqlDB =
                     (t.CostCenterId = id_cost.InternalId)
             join id_profit in (!!) context.OilPhysical.EndurProfitCenter on 
                     (t.ProfitCenterId = id_profit.InternalId)
-            where (t.BookingCompanyShortName = book && (t.DealNumber = i || n_del.CargoId = i || n_rec.CargoId = i || t.ExternalLegalEntityId = (string i)))
+            where (t.BookingCompanyShortName = book 
+                && ((isByTrade && t.DealNumber = i) || 
+                    (isByCargo && n_del.CargoId = i) || 
+                    (isByCargo && n_rec.CargoId = i) || 
+                    (isByCpty && t.ExternalLegalEntityId = (string i)) ))
             take 90
             select (t,n_del.CargoId, n_rec.CargoId, id_cost.EndurId, id_profit.EndurId)  
             }
     
-    let nominationsQuery (book:string) (sel: ParsedTrade) =
+    let nominationsQuery (book:string) (alert_type:string) (sel: ParsedTrade) =
+        let isByTrade = alertOfType ByTrade alert_type
+        let isByFee = alertOfType ByFee alert_type
+        let isByCpty = alertOfType ByCpty alert_type
+        let isByCargo = alertOfType ByCargo alert_type
         match sel with
         | NoSelection -> 
             query {
@@ -123,17 +148,21 @@ module SqlDB =
             query {
                 for n in context.OilPhysical.EndurNominationValid do
                 where (n.BookingCompany = book && (
-                        n.DeliveryExternalLegalEntityId = i ||
-                        n.CargoId = i ||
-                        n.DeliveryDealNumber = i ||
-                        n.ReceiptDealNumber = i
+                        (isByCpty && n.DeliveryExternalLegalEntityId = i) ||
+                        (isByCargo && n.CargoId = i) ||
+                        (isByTrade && n.DeliveryDealNumber = i) ||
+                        (isByTrade && n.ReceiptDealNumber = i)
                     ))
                 take 90
                 sortByDescending n.TitleTranfertDate
                 select n
             }
     
-    let costsQuery (book:string) (sel: ParsedTrade) =
+    let costsQuery (book:string) (alert_type:string) (sel: ParsedTrade) =
+        let isByTrade = alertOfType ByTrade alert_type
+        let isByFee = alertOfType ByFee alert_type
+        let isByCpty = alertOfType ByCpty alert_type
+        let isByCargo = alertOfType ByCargo alert_type
         let delete_type = Cost.Operations.Delete.GetEnumDescription()
         match sel with
         | NoSelection -> 
@@ -159,8 +188,8 @@ module SqlDB =
                 where (c.BookingCompany = book &&
                     c.FeeStatus <> Cost.ClosedFeeStatus &&
                     c.FeeType <> delete_type &&
-                        ( c.CounterpartyId = i_str ||
-                          c.FeeId = i || c.CargoId = i )
+                        ( (isByCpty && c.CounterpartyId = i_str) ||
+                          (isByFee && c.FeeId = i) || (isByCargo && c.CargoId = i) )
                     )
                 take 90
                 select c
@@ -251,6 +280,47 @@ module SqlDB =
             context.SubmitUpdates()
         | None -> ()
     
+    type RowSapPL = { CargoID: int; Currency: string; IsInternal: bool; Amount: decimal}
+    
+    let emptySapPl () =
+        asyncSeq {
+            try
+                let! dels =   
+                    query {
+                     for pl in context.OilPhysical.SapPl do 
+                     where (true)
+                    } |> Seq.``delete all items from single table``
+                yield Ok (dels, "deleted")
+            with 
+            | exc -> 
+                yield Error (exc.Message, "emptySapPl failed")
+        }
+
+    let loadSapPL (rows:RowSapPL[]) : AsyncSeq<Result<int * string, string * string>> = 
+        asyncSeq {
+            try
+                rows
+                |> Array.iter( fun r ->
+                    context.OilPhysical.SapPl.``Create(Amount, CargoID, Currency, InternalCurr)`` (r.Amount, r.CargoID, r.Currency, r.IsInternal) |> ignore
+                )
+                do! context.SubmitUpdatesAsync()
+                yield Ok (rows |> Array.length, "inserted")
+            with
+            | exc ->
+                yield Error (exc.Message, "loadSapPL failed") 
+        }
+
+    let cargoPL cargoId currency = 
+        let query =
+            query {
+                for p in context.OilPhysical.SapPl do
+                where (p.CargoId = cargoId && p.Currency = currency)
+                select p
+            }
+        async {
+            return! query |> Seq.tryHeadAsync
+        }
+
     let findAssignedAlerts (username:string) =
         async {
             let countAssigned = 
@@ -392,7 +462,26 @@ module SqlDB =
             else (k, v)
         )
 
+    
     type DB() =
+        member x.loadSapPL (rows:RowSapPL[])  : AsyncSeq<Result<int * string, string * string>> =  
+            asyncSeq {
+                yield! emptySapPl()
+                let chunks = rows |> Array.chunkBySize 500
+                for chunk in chunks do
+                    yield! loadSapPL chunk
+            }
+        
+        member x.getSapPL cargoId currency = 
+            async {
+                let! pl = cargoPL cargoId currency
+                return pl 
+                |> Option.map( fun r ->
+                    { CargoID = r.CargoId; Currency = r.Currency; Amount = r.Amount; IsInternal = r.InternalCurr}
+                )
+            }
+        
+
         member x.findAssignedAlerts (username:string) = 
             findAssignedAlerts username
 
@@ -401,12 +490,12 @@ module SqlDB =
             (newKey: string) (newCode: string) = 
             manualAlertUpdate bookingComp oldKey oldCode newKey newCode
 
-        member x.trades (sel: ParsedTrade) (book: string) : Async<DBTable> = async {
+        member x.trades (sel: ParsedTrade) (alert_type:string) (book: string) : Async<DBTable> = async {
         #if OFFLINE
             printfn "only ONLINE, no offline table at the moment"
             return [||]
         #else
-            let! queryRes = tradesQuery book sel |> Array.executeQueryAsync 
+            let! queryRes = tradesQuery book alert_type sel |> Array.executeQueryAsync 
             return queryRes
             |> Array.map(fun (t,n_del,n_rec, cost, profit) -> 
                 t.ColumnValues
@@ -420,12 +509,12 @@ module SqlDB =
         #endif
         } 
 
-        member x.nominations  (sel: ParsedTrade) (book: string) : Async<DBTable> = async {
+        member x.nominations  (sel: ParsedTrade) (alert_type:string) (book: string) : Async<DBTable> = async {
         #if OFFLINE
             printfn "only ONLINE, no offline table at the moment"
             return [||]
         #else
-            let! queryRes = nominationsQuery book sel |> Array.executeQueryAsync  
+            let! queryRes = nominationsQuery book alert_type sel |> Array.executeQueryAsync  
             return queryRes
             |> Array.map(fun n -> 
                 n.ColumnValues
@@ -433,12 +522,12 @@ module SqlDB =
         #endif
         }
         
-        member x.costs  (sel: ParsedTrade) (book: string) : Async<DBTable> = async {
+        member x.costs  (sel: ParsedTrade) (alert_type:string) (book: string) : Async<DBTable> = async {
         #if OFFLINE
             printfn "only ONLINE, no offline table at the moment"
             [||]
         #else
-            let! queryRes = costsQuery book sel |> Array.executeQueryAsync  
+            let! queryRes = costsQuery book alert_type sel |> Array.executeQueryAsync  
             return queryRes
             |> Array.map(fun n -> 
                 n.ColumnValues

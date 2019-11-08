@@ -259,7 +259,8 @@ module Site =
     
 
     let TablePage ctx =
-        let sel_cargo_id : string = string HttpContext.Current.Request.Form.["sel_cargo_id"]
+        let sel_alert_type : string = string HttpContext.Current.Request.Form.[SelAlertType]
+        let sel_cargo_id : string = string HttpContext.Current.Request.Form.[SelAlertKey]
         let bookCo = bookCo()  //  the client quotation can only contain either JavaScript globals or local variables
         let checked_cargo_id = 
             match sel_cargo_id with
@@ -269,7 +270,7 @@ module Site =
         Templating.Tss ctx "Oil Data" [
             Doc.WebControl (new Web.Require<MetroStyle>())
             Doc.WebControl (new Web.Require<OverlayStyle>())
-            div [] [client <@ Client.RetrieveTrades checked_cargo_id bookCo @>]
+            div [] [client <@ Client.RetrieveTrades checked_cargo_id sel_alert_type bookCo @>]
             Doc.WebControl (new Web.Require<MasterScript>())
             Doc.WebControl (new Web.Require<MetroScript>())
         ] ShowBadges (SelectCompany bookCo)

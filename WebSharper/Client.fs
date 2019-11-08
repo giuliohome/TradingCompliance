@@ -16,8 +16,8 @@ open WebSharper.Moment
 [<JavaScript>]
 module Client = 
 
-    type DataInput = {input: string; book: string}
-    let rvInput = Var.Create {input = ""; book = ""}
+    type DataInput = {input: string; book: string; entity_type: string}
+    let rvInput = Var.Create {input = ""; book = ""; entity_type = ""}
     let submit = Submitter.CreateOption rvInput.View
     let htmlInput = Var.Create ""
     let htmlSubmit = Submitter.CreateOption htmlInput.View
@@ -332,11 +332,6 @@ module Client =
             hr [] []
             h4 [attr.``class`` "text-muted"] [text "The server responded:"]
             div [attr.``class`` "jumbotron"] [h1 [] [textView vReversed]]
-            p [] [text "Now we test a post with a parameter"]
-            ("sel_cargo_id", "21802")  |==> EndPoint.Table
-            p [] [text " ---- "]
-            p [] [text "Yet another test"]
-            ("sel_cargo_id",  "21803") |==> EndPoint.Table
         ]
 
     let Inspector (table_name: string) =
@@ -833,7 +828,7 @@ module Client =
                 )
         ]
     
-    let RetrieveTrades (sel_cargo_id: SqlDB.ParsedTrade) (bookCo:string) = 
+    let RetrieveTrades (sel_cargo_id: SqlDB.ParsedTrade) (sel_alert_type:string) (bookCo:string) = 
         JS.Inline "Object.defineProperties(Array.prototype, 
             {
                 shuffle : { enumerable : false }, 
@@ -852,7 +847,7 @@ module Client =
         | SqlDB.IntSel i -> 
             Console.Log("sel_cargo_id: " + string i)
             htmlInput.Set (string i)
-            rvInput.Update (fun curr -> { curr with input = string i})
+            rvInput.Update (fun curr -> { curr with input = string i; entity_type = sel_alert_type})
 
         let vResponse =
             submit.View.MapAsync(function
@@ -860,22 +855,46 @@ module Client =
                 | Some data -> 
                     async { 
                         try
-                            let! received = Server.RetrieveOilData data.book data.input
+                            let! received = Server.RetrieveOilData data.book data.entity_type data.input
                             return Received received
                         with | e -> 
                             return GeneralError ("Error: " + e.Message)
                     }
             )
-
+        
         Doc.Concat [
         h2 [] [text "Oil Data Selection"]
-        p [] [text "You can retrieve trades (max 90) from DB by trade/cargo/cost/cpty number, customize (hide/move/sort) the columns and search within the retrieved results"]
+        p [] [text "You can retrieve trades/cargoes/costs (max 90) from DB by trade/cargo/cost/cpty number, customize (hide/move/sort) the columns and search within the retrieved results"]
         form [] [
                 Doc.Input [attr.id "retrieve_input"; attr.``type`` "number"; attr.``class`` "mt-1"; attr.``data-`` "role" "input" ; // attr.``data-`` "clear-button" "false";
                 attr.``data-`` "prepend" "Retrieve data " ; attr.placeholder " by trade, cargo, cost or cpty num"; on.change (fun _ _ -> 
                     htmlSubmit.Trigger()) ] htmlInput
                 Doc.Button "Retrieve from DB" [attr.``class`` "button success"] 
                     htmlSubmit.Trigger
+                span [attr.style "display: inline-block;width:auto; margin-left:15px; margin-right:12px;"] [text "by";]
+                select [attr.id SearchByDropDown; attr.style "display: inline-block;width:auto;font-size:14px;line-height:normal;height:22px"; 
+                        on.change <@ fun el ev ->
+                            let searchBySelect = JQuery.Of("#"+SearchByDropDown)
+                            let sel_alert_type  = string (searchBySelect.Val())
+                            rvInput.Update (fun curr -> { curr with entity_type = sel_alert_type})
+                            htmlSubmit.Trigger()
+                        @>
+                        on.afterRender 
+                            <@ fun el -> 
+                                let searchBySelect = JQuery.Of("#"+SearchByDropDown)
+                                Console.Log("sel_alert_type: ", sel_alert_type)
+                                Console.Log("searchBySelect: ", searchBySelect)
+                                match sel_alert_type with
+                                | x when x = ServerModel.ByCpty -> searchBySelect.Val(ServerModel.ByCpty).Ignore
+                                | x when x = ServerModel.ByTrade -> searchBySelect.Val(ServerModel.ByTrade).Ignore
+                                | x when x = ServerModel.ByFee -> searchBySelect.Val(ServerModel.ByFee).Ignore
+                                | _ -> searchBySelect.Val(ServerModel.ByCargo).Ignore
+                            @>;
+                        ] [     
+                    Tags.option [attr.value ServerModel.ByCargo;] [ text "Cargo Id" ]; 
+                    Tags.option [attr.value ServerModel.ByTrade] [ text "Deal num"]
+                    Tags.option [attr.value ServerModel.ByCpty] [ text "Cpty num"]
+                    Tags.option [attr.value ServerModel.ByFee] [ text "Fee Id"] ]
                 ]
         Doc.BindView (fun l -> Doc.Empty) ignoreView
         vResponse

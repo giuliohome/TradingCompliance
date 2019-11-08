@@ -21,6 +21,18 @@ module ServerModel =
     let EtsSpA = "ETS SpA"
     [<JavaScript>]
     let EtsInc = "ETS Inc"
+    [<JavaScript>]
+    let SelAlertKey = "sel_cargo_id"
+    [<JavaScript>]
+    let SelAlertType = "sel_alert_type"
+    [<JavaScript>]
+    let ByCargo = "ByCargo"
+    [<JavaScript>]
+    let ByTrade = "ByTrade"
+    [<JavaScript>]
+    let ByCpty = "ByCpty"
+    [<JavaScript>]
+    let ByFee = "ByFee"
 
     let getBookCo bookCo =
         match bookCo with

@@ -210,7 +210,10 @@ module ARecs =
                                                 edit = true;
                                                 create = true;
                                                 display = fun data -> 
-                                                    ("sel_cargo_id", data?record?AlertKey)  |==> EndPoint.Table 
+                                                    let param1 = {param_name = ServerModel.SelAlertKey; param_id = data?record?AlertKey}
+                                                    let param2 = {param_name = ServerModel.SelAlertType; param_id = alert2entity data?record?AlertCode}
+                                                    let post_form = {key_param_id = data?record?AlertKey; post_params = [| param1; param2|]}
+                                                    post_form  |==> EndPoint.Table 
                                                     |> ToHtml
                                             |};
                                         "CompositeKey" => 

@@ -1,14 +1,77 @@
-﻿#I "bin/Debug"
-
-#r @"Import2TSS.dll"
+﻿#r @"Import2TSS.dll"
 #r @"FSharp.Data.SqlProvider.dll"
+#r @"FSharp.Control.AsyncSeq.dll"
 
 #load "Library1.fs"
 open SqlLib
 open SqlDB
 open System
+open FSharp.Control
+open System.IO
 
 // Define your library scripting code here
+
+// specific test case for  Sap P&L
+
+//read P&L
+
+try
+    async {
+        let cargoId = 21827
+        let currency = "EUR"
+        let db = DB()
+        match! db.getSapPL cargoId currency with
+        | Some pl ->
+            printfn "Sap P&L: %A" pl
+        | None ->
+            printfn "%s Sap P&L not found for cargo %d" currency cargoId
+    } |> Async.RunSynchronously
+with
+ | exc ->
+     printfn "Error %s " (exc.ToString())
+
+//write P&L
+
+//let logFile = @"C:\compliance\Sap\dev\testSapPl.txt"
+
+//let log (msg:string) = 
+//    use sw = new StreamWriter(logFile, true)
+//    sw.WriteLine msg
+//    sw.Flush()
+
+let action (res: Result<int * string, string * string>) = 
+    //async  {
+        match res with
+        | Ok (i,m) -> 
+            printfn "*** Ok %d %s *** " i m
+            //log <| sprintf "*** Ok %d %s *** " i m
+        | Error (m,e) -> 
+            printfn "*** Error %s %s *** " m e
+            //log <| sprintf "*** Error %s %s *** " m e
+    //}
+
+try
+    async {
+        let db = DB()
+        let rows = [|
+            { CargoID = 1; Currency = "EUR"; IsInternal = true; Amount = 223.12m};
+            { CargoID = 1; Currency = "USD"; IsInternal = false; Amount = 245.89m};
+        |]
+        printfn "starting async seq"
+        //do! AsyncSeq.iterAsync action (db.loadSapPL rows) 
+        let! results = db.loadSapPL rows |> AsyncSeq.toListAsync
+        results
+        |> List.length
+        |> printfn "result list contains items #: %d" 
+        results
+        |> List.iter action
+        printfn "async seq ended"
+    } |> Async.RunSynchronously
+with
+ | exc ->
+     printfn "Error %s " (exc.ToString())
+
+
 
 // specific test case for assigned alerts
 try 

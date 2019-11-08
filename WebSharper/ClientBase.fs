@@ -11,6 +11,7 @@ open WebSharper.JQuery
 open Import2TSS
 open SqlLib
 open WebSharper.Moment
+open Import2TSS
 
 [<JavaScript>]
 module ClientBase =
@@ -21,18 +22,29 @@ module ClientBase =
         let url_app = doc_url.Substring(0, doc_url.LastIndexOf('/'))
         url_app + router.Link(safe_url)        
     
-    let (|==>) (param_name, param_id) (safe_url:EndPoint) =
+    let alert2entity (alert_code: string) =
+        match alert_code with
+        | x when x.StartsWith("A82") -> ServerModel.ByTrade
+        | x when x.StartsWith("A51") -> ServerModel.ByCpty
+        | _ -> ServerModel.ByCargo
+    type PostParam = {param_name: string; param_id: string}
+    type PostForm = {key_param_id: string; post_params: PostParam[]}
+    let (|==>) (post_form: PostForm) (safe_url:EndPoint) =
         let router = Router.Infer()
         let doc_url = JS.Document.URL
         let url_app = doc_url.Substring(0, doc_url.LastIndexOf('/'))
         let url = url_app + router.Link(safe_url)
         //Console.Log("inferring url: " + url)
-        form [attr.target "_blank"; attr.action url; attr.id ("form" + param_id); attr.method "POST" ] [
+        form [attr.target "_blank"; attr.action url; attr.id ("form" + post_form.key_param_id); attr.method "POST" ] [
             a [ on.click (fun el ev -> 
-                    let frm = JS.Document.GetElementById ("form" + param_id) |> As<HTMLFormElement>
+                    let frm = JS.Document.GetElementById ("form" + post_form.key_param_id) |> As<HTMLFormElement>
                     frm.Submit()
-                ) ] [text param_id]
-            input [attr.``type`` "hidden"; attr.name param_name; attr.value param_id] []
+                ) ] [text post_form.key_param_id]
+            Doc.Concat 
+                (post_form.post_params
+                |> Array.map ( fun pp ->
+                    input [attr.``type`` "hidden"; attr.name pp.param_name; attr.value pp.param_id] []
+                ))
         ]
 
     let ToHtml (doc:Doc) : JQuery =  
@@ -56,6 +68,10 @@ module ClientBase =
     let EtsSpA = ServerModel.EtsSpA 
     let EtsInc =  ServerModel.EtsInc
     let DropDownList = "MasterBookCo"
+
+    let SearchByDropDown = "SearchByDropDown"
+
+
 
     let GetBookCo () = async {
         let sel = JS.Document.GetElementById(DropDownList) |> As<HTMLSelectElement>
